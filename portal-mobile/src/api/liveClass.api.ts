@@ -13,6 +13,20 @@ export interface LiveClassItem {
   recordingUrl?: string | null;
 }
 
+export interface CourseOption {
+  id: string;
+  name: string;
+}
+
+export interface CreateLiveClassInput {
+  title: string;
+  description?: string;
+  courseId: string;
+  scheduledAt: string; // ISO string
+  durationMinutes: number;
+  isFreeDemo: boolean;
+}
+
 export const liveClassApi = {
   async myClasses(): Promise<LiveClassItem[]> {
     // No courseId filter -- backend already scopes this to "my assigned
@@ -27,5 +41,19 @@ export const liveClassApi = {
       `/live-classes/${id}/host-join`
     );
     return data.data;
+  },
+
+  async courses(): Promise<CourseOption[]> {
+    const { data } = await apiClient.get<ApiSuccessResponse<CourseOption[]>>("/courses");
+    return data.data;
+  },
+
+  async create(input: CreateLiveClassInput): Promise<LiveClassItem> {
+    const { data } = await apiClient.post<ApiSuccessResponse<LiveClassItem>>("/live-classes", input);
+    return data.data;
+  },
+
+  async cancel(id: string): Promise<void> {
+    await apiClient.patch(`/live-classes/${id}/cancel`);
   },
 };
