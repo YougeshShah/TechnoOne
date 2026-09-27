@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -58,6 +59,7 @@ export default function TicketDetailScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const listRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets();
 
   const [replyText, setReplyText] = useState("");
   const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
@@ -223,7 +225,7 @@ export default function TicketDetailScreen() {
               </TouchableOpacity>
             </View>
           )}
-          <View style={styles.inputRow}>
+          <View style={[styles.inputRow, { paddingBottom: spacing.md + insets.bottom }]}>
             <TouchableOpacity onPress={handleAttach} style={styles.attachButton} disabled={submitting}>
               <Ionicons name="attach" size={22} color={colors.primary} />
             </TouchableOpacity>
@@ -234,7 +236,7 @@ export default function TicketDetailScreen() {
           </View>
         </>
       ) : (
-        <View style={styles.closedBanner}>
+        <View style={[styles.closedBanner, { paddingBottom: spacing.md + insets.bottom }]}>
           <Text style={styles.closedBannerText}>This ticket is closed.</Text>
         </View>
       )}

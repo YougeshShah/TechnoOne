@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { ticketApi, TicketStatus, TicketSummary } from "../../src/api/ticket.api";
 import { Card } from "../../src/components/Card";
@@ -26,7 +27,9 @@ const FILTERS: Array<{ label: string; value: TicketStatus | "ALL" }> = [
 
 export default function TicketsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<TicketStatus | "ALL">("ALL");
+  const [filterPickerOpen, setFilterPickerOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["tickets", filter],
@@ -36,19 +39,35 @@ export default function TicketsScreen() {
 
   const tickets = data?.items ?? [];
 
+  const activeFilterLabel = FILTERS.find((f) => f.value === filter)?.label ?? "All";
+
   return (
     <View style={styles.container}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f.value}
-            style={[styles.filterChip, filter === f.value && styles.filterChipActive]}
-            onPress={() => setFilter(f.value)}
-          >
-            <Text style={[styles.filterChipText, filter === f.value && styles.filterChipTextActive]}>{f.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <TouchableOpacity style={styles.filterDropdown} onPress={() => setFilterPickerOpen(true)}>
+        <Text style={styles.filterDropdownText}>Status: {activeFilterLabel}</Text>
+        <Ionicons name="chevron-down" size={18} color="#6B7280" />
+      </TouchableOpacity>
+
+      <Modal visible={filterPickerOpen} transparent animationType="slide" onRequestClose={() => setFilterPickerOpen(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setFilterPickerOpen(false)}>
+          <View style={[styles.pickerCard, { paddingBottom: spacing.md + insets.bottom }]}>
+            <Text style={styles.pickerTitle}>Filter by Status</Text>
+            {FILTERS.map((f) => (
+              <TouchableOpacity
+                key={f.value}
+                style={styles.pickerItem}
+                onPress={() => {
+                  setFilter(f.value);
+                  setFilterPickerOpen(false);
+                }}
+              >
+                <Text style={styles.pickerItemText}>{f.label}</Text>
+                {filter === f.value && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <FlatList
         data={tickets}
@@ -76,7 +95,7 @@ export default function TicketsScreen() {
         }
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => router.push("/tickets/new")}>
+      <TouchableOpacity style={[styles.fab, { bottom: spacing.lg + insets.bottom }]} onPress={() => router.push("/tickets/new")}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
     </View>
@@ -85,11 +104,25 @@ export default function TicketsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  filterRow: { flexGrow: 0, paddingVertical: spacing.sm },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipText: { fontSize: 12, fontWeight: "600", color: colors.textSecondary },
-  filterChipTextActive: { color: "#fff" },
+  filterDropdown: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+  },
+  filterDropdownText: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerCard: { backgroundColor: "#fff", borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg },
+  pickerTitle: { fontSize: 16, fontWeight: "700", marginBottom: spacing.md },
+  pickerItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  pickerItemText: { fontSize: 15, color: colors.textPrimary },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   subject: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, flex: 1, marginRight: spacing.sm },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
