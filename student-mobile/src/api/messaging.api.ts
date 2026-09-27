@@ -81,4 +81,8 @@ export const messagingApi = {
     const { data } = await apiClient.get("/messaging/unread-count");
     return data.data.count;
   },
+
+  async deleteMessage(messageId: string): Promise<void> {
+    await apiClient.delete(`/messaging/messages/${messageId}`);
+  },
 };
