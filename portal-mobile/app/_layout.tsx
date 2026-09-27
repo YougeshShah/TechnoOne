@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useAuthStore } from "../src/store/authStore";
 import { registerForPushNotifications } from "../src/utils/pushNotifications";
 import { LanguageProvider } from "../src/i18n/LanguageContext";
@@ -44,24 +45,26 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <AuthGate>
-          <StatusBar style="light" />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="case/[id]" options={{ headerShown: true, title: "Case Details" }} />
-            <Stack.Screen name="case/create" options={{ headerShown: true, title: "New Case", presentation: "modal" }} />
-            <Stack.Screen name="hearing/create" options={{ headerShown: true, title: "Schedule Hearing", presentation: "modal" }} />
-            <Stack.Screen name="edit-profile" options={{ headerShown: true, title: "Edit Profile", presentation: "modal" }} />
-            <Stack.Screen name="client/create" options={{ headerShown: true, title: "Add Client", presentation: "modal" }} />
-            <Stack.Screen name="library" options={{ headerShown: true, title: "Legal Library" }} />
-            <Stack.Screen name="live-classes" options={{ headerShown: true, title: "Live Classes" }} />
-            <Stack.Screen name="document/generate" options={{ headerShown: true, title: "Generate Document", presentation: "modal" }} />
-          </Stack>
-        </AuthGate>
-      </LanguageProvider>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <LanguageProvider>
+          <AuthGate>
+            <StatusBar style="light" />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="case/[id]" options={{ headerShown: true, title: "Case Details" }} />
+              <Stack.Screen name="case/create" options={{ headerShown: true, title: "New Case", presentation: "modal" }} />
+              <Stack.Screen name="hearing/create" options={{ headerShown: true, title: "Schedule Hearing", presentation: "modal" }} />
+              <Stack.Screen name="edit-profile" options={{ headerShown: true, title: "Edit Profile", presentation: "modal" }} />
+              <Stack.Screen name="client/create" options={{ headerShown: true, title: "Add Client", presentation: "modal" }} />
+              <Stack.Screen name="library" options={{ headerShown: true, title: "Legal Library" }} />
+              <Stack.Screen name="live-classes" options={{ headerShown: true, title: "Live Classes" }} />
+              <Stack.Screen name="document/generate" options={{ headerShown: true, title: "Generate Document", presentation: "modal" }} />
+            </Stack>
+          </AuthGate>
+        </LanguageProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }

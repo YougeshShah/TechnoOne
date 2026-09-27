@@ -11,6 +11,7 @@ import {
   Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePrecedentSearch, usePrecedentDetail, usePrecedentCategories } from "../src/hooks/usePrecedents";
 import { colors, spacing, radius } from "../src/theme/theme";
 
@@ -105,9 +106,11 @@ function DocumentSearchViewer({ text, term }: { text: string; term: string }) {
 }
 
 export default function PrecedentsScreen() {
+  const insets = useSafeAreaInsets();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [inDocSearch, setInDocSearch] = useState("");
@@ -137,16 +140,10 @@ export default function PrecedentsScreen() {
         />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={{ paddingHorizontal: spacing.md, gap: 8 }}>
-        <TouchableOpacity onPress={() => setCategory("")} style={[styles.chip, !category && styles.chipActive]}>
-          <Text style={[styles.chipText, !category && styles.chipTextActive]}>All</Text>
-        </TouchableOpacity>
-        {categories?.map((c) => (
-          <TouchableOpacity key={c} onPress={() => setCategory(c)} style={[styles.chip, category === c && styles.chipActive]}>
-            <Text style={[styles.chipText, category === c && styles.chipTextActive]}>{c}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <TouchableOpacity style={styles.categoryDropdown} onPress={() => setCategoryPickerOpen(true)}>
+        <Text style={category ? styles.categoryDropdownText : styles.categoryDropdownPlaceholder}>{category || "All Categories"}</Text>
+        <Ionicons name="chevron-down" size={18} color="#6B7280" />
+      </TouchableOpacity>
 
       {isLoading && (
         <View style={styles.center}>
@@ -186,7 +183,7 @@ export default function PrecedentsScreen() {
         )}
       />
       {results && results.pagination.totalPages > 1 && (
-        <View style={styles.pageBar}>
+        <View style={[styles.pageBar, { paddingBottom: 10 + insets.bottom }]}>
           <TouchableOpacity
             onPress={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
@@ -206,6 +203,30 @@ export default function PrecedentsScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal visible={categoryPickerOpen} transparent animationType="slide" onRequestClose={() => setCategoryPickerOpen(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setCategoryPickerOpen(false)}>
+          <View style={[styles.pickerCard, { paddingBottom: spacing.md + insets.bottom }]}>
+            <Text style={styles.pickerTitle}>Select Category</Text>
+            <FlatList
+              data={["", ...(categories ?? [])]}
+              keyExtractor={(item, i) => item || `all-${i}`}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerItem}
+                  onPress={() => {
+                    setCategory(item);
+                    setCategoryPickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.pickerItemText}>{item || "All Categories"}</Text>
+                  {category === item && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal visible={!!viewingId} animationType="slide" onRequestClose={() => setViewingId(null)}>
         <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -265,11 +286,24 @@ const styles = StyleSheet.create({
     height: 42,
   },
   searchInput: { flex: 1, fontSize: 14, color: colors.textPrimary },
-  chipRow: { maxHeight: 52, marginTop: spacing.sm },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: "#F3F4F6", justifyContent: "center" },
-  chipActive: { backgroundColor: colors.primary },
-  chipText: { fontSize: 13, color: "#374151", fontWeight: "600" },
-  chipTextActive: { color: "#fff" },
+  categoryDropdown: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: radius.sm,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: 12,
+    height: 42,
+  },
+  categoryDropdownText: { fontSize: 14, color: colors.textPrimary, fontWeight: "600" },
+  categoryDropdownPlaceholder: { fontSize: 14, color: "#9CA3AF" },
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerCard: { backgroundColor: "#fff", borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, maxHeight: "70%" },
+  pickerTitle: { fontSize: 16, fontWeight: "700", marginBottom: spacing.md },
+  pickerItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  pickerItemText: { fontSize: 15, color: colors.textPrimary },
   emptyText: { textAlign: "center", color: colors.textSecondary, marginTop: spacing.xl },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
   cardTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, flex: 1, marginRight: 8 },
