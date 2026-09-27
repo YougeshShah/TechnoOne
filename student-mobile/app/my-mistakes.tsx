@@ -52,14 +52,27 @@ export default function MyMistakesScreen() {
                 const optionText = (q as any)[`option${key}`];
                 if (!optionText) return null;
                 const isCorrect = q.correctOption === key;
+                const isYourWrongPick = (q as any).studentAnswer === key && !isCorrect;
                 return (
-                  <View key={key} style={[styles.optionRow, isCorrect && styles.optionRowCorrect]}>
-                    <Text style={[styles.optionText, isCorrect && styles.optionTextCorrect]}>
-                      {key}. {optionText} {isCorrect ? "✓" : ""}
+                  <View
+                    key={key}
+                    style={[styles.optionRow, isCorrect && styles.optionRowCorrect, isYourWrongPick && styles.optionRowWrong]}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        isCorrect && styles.optionTextCorrect,
+                        isYourWrongPick && styles.optionTextWrong,
+                      ]}
+                    >
+                      {key}. {optionText} {isCorrect ? "✓" : ""} {isYourWrongPick ? "✗ Your answer" : ""}
                     </Text>
                   </View>
                 );
               })}
+
+            {(q.answerType === "FILL_BLANK" || q.answerType === "SHORT_ANSWER" || q.answerType === "MULTI_BLANK") &&
+              (q as any).studentAnswer && <Text style={styles.yourAnswerText}>Your answer: {(q as any).studentAnswer}</Text>}
 
             {q.correctAnswerText && <Text style={styles.correctAnswerText}>Correct answer: {q.correctAnswerText}</Text>}
 
@@ -93,8 +106,11 @@ const styles = StyleSheet.create({
   questionText: { fontSize: 15, fontWeight: "600", marginBottom: 12, lineHeight: 21 },
   optionRow: { padding: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8 },
   optionRowCorrect: { borderColor: "#16A34A", backgroundColor: "#F0FDF4" },
+  optionRowWrong: { borderColor: "#DC2626", backgroundColor: "#FEF2F2" },
   optionText: { fontSize: 14 },
   optionTextCorrect: { fontWeight: "700", color: "#166534" },
+  optionTextWrong: { fontWeight: "700", color: "#991B1B" },
+  yourAnswerText: { fontSize: 14, fontWeight: "700", color: "#DC2626", marginBottom: 4 },
   correctAnswerText: { fontSize: 14, fontWeight: "700", color: "#16A34A", marginTop: 4, marginBottom: 8 },
   explanationText: { fontSize: 13, color: "#6B7280", paddingTop: 10, borderTopWidth: 1, borderTopColor: "#F3F4F6", lineHeight: 19 },
 });
