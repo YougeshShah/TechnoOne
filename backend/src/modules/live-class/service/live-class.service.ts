@@ -22,6 +22,14 @@ function generateRoomName(title: string): string {
   return `technoone-${slug}-${uniqueSuffix}`;
 }
 
+// Institution staff (admin, teacher, or general staff) may only manage a
+// class hosted by their OWN institution. Company staff can manage any class.
+function assertCanManage(liveClass: any, auth: { accountType: string; lawFirmId: string | null }) {
+  if (auth.accountType === "COMPANY") return;
+  if (liveClass.hostLawFirmId && liveClass.hostLawFirmId === auth.lawFirmId) return;
+  throw AppError.forbidden("You don't have access to manage this class.");
+}
+
 export const liveClassService = {
   async list(query: ListLiveClassesQuery, opts: { studentLawFirmId?: string | null; forLawFirmId?: string; onlyHostId?: string } = {}) {
     return liveClassRepository.findMany({
@@ -180,8 +188,9 @@ export const liveClassService = {
     };
   },
 
-  async remove(id: string) {
+  async remove(id: string, auth: { accountType: string; lawFirmId: string | null }) {
     const cls = await this.getById(id);
+    assertCanManage(cls, auth);
     if (cls.status === "LIVE") {
       throw AppError.badRequest("Cannot delete a class that is currently live. End it first.");
     }
@@ -193,28 +202,37 @@ export const liveClassService = {
     return liveClassRepository.listAttendees(id);
   },
 
-  async markLive(id: string) {
-    await this.getById(id);
+  async markLive(id: string, auth: { accountType: string; lawFirmId: string | null }) {
+    const cls = await this.getById(id);
+    assertCanManage(cls, auth);
     return liveClassRepository.setStatus(id, "LIVE");
   },
 
-  async markEnded(id: string) {
-    await this.getById(id);
+  async markEnded(id: string, auth: { accountType: string; lawFirmId: string | null }) {
+    const cls = await this.getById(id);
+    assertCanManage(cls, auth);
     return liveClassRepository.setStatus(id, "ENDED");
   },
 
-  async uploadRecording(id: string, recordingUrl: string) {
-    await this.getById(id);
+  async uploadRecording(id: string, recordingUrl: string, auth: { accountType: string; lawFirmId: string | null }) {
+    const cls = await this.getById(id);
+    assertCanManage(cls, auth);
     return liveClassRepository.setRecordingUrl(id, recordingUrl);
   },
 
-  async cancel(id: string) {
-    await this.getById(id);
+  async cancel(id: string, auth: { accountType: string; lawFirmId: string | null }) {
+    const cls = await this.getById(id);
+    assertCanManage(cls, auth);
     return liveClassRepository.setStatus(id, "CANCELLED");
   },
 
-  async update(id: string, input: { title?: string; description?: string; scheduledAt?: string; durationMinutes?: number; isFreeDemo?: boolean; hostId?: string }) {
+  async update(
+    id: string,
+    input: { title?: string; description?: string; scheduledAt?: string; durationMinutes?: number; isFreeDemo?: boolean; hostId?: string },
+    auth: { accountType: string; lawFirmId: string | null }
+  ) {
     const cls = await this.getById(id);
+    assertCanManage(cls, auth);
     if (cls.status !== "SCHEDULED") {
       throw AppError.badRequest(`Only a SCHEDULED class can be edited. Current status: ${cls.status}`);
     }

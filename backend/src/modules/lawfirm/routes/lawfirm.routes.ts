@@ -16,7 +16,13 @@ router.get("/public", lawFirmController.listPublic);
 router.get("/website/:slug", lawFirmController.getWebsite);
 router.get("/website-by-host", lawFirmController.getWebsiteByHost);
 
-// All law firm management routes are restricted to COMPANY (Technocraftx) accounts.
+// Self-service institution settings -- an institution's own admin, teacher,
+// or general staff (LAW_FIRM_ADMIN/LAWYER/STAFF) can read/update settings
+// for their OWN institution only (see controller.getMySettings/updateMySettings).
+router.get("/me/settings", authenticate, authorize("LAW_FIRM_ADMIN", "LAWYER", "STAFF"), lawFirmController.getMySettings);
+router.patch("/me/settings", authenticate, authorize("LAW_FIRM_ADMIN", "LAWYER", "STAFF"), lawFirmController.updateMySettings);
+
+// All law firm management routes below are restricted to COMPANY (Technocraftx) accounts.
 router.use(authenticate, authorize("COMPANY"));
 
 router.get("/", lawFirmController.list);

@@ -203,4 +203,19 @@ export const lawFirmRepository = {
   countCreatedBetween(start: Date, end: Date) {
     return prisma.lawFirm.count({ where: { createdAt: { gte: start, lt: end } } });
   },
+
+  findMySettings(id: string) {
+    return prisma.lawFirm.findUnique({
+      where: { id },
+      select: { id: true, name: true, allowRecordingScreenshots: true },
+    });
+  },
+
+  updateMySettings(id: string, data: { allowRecordingScreenshots?: boolean }) {
+    return prisma.lawFirm.update({
+      where: { id },
+      data,
+      select: { id: true, name: true, allowRecordingScreenshots: true },
+    });
+  },
 };

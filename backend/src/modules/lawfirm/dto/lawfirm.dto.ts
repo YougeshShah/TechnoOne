@@ -17,6 +17,14 @@ export const suspendLawFirmSchema = z.object({
 });
 export type SuspendLawFirmInput = z.infer<typeof suspendLawFirmSchema>;
 
+// Self-service settings an institution's own staff (admin, teacher, or
+// general staff) can change for their own institution -- distinct from
+// updateModulesSchema, which only Company (platform) staff may touch.
+export const updateMySettingsSchema = z.object({
+  allowRecordingScreenshots: z.boolean(),
+});
+export type UpdateMySettingsInput = z.infer<typeof updateMySettingsSchema>;
+
 export const tenantTypes = ["LAW_FIRM", "EDUCATION", "OTHER"] as const;
 export const availableModules = [
   "case_management",

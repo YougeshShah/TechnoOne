@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { lawFirmService } from "../service/lawfirm.service";
-import { listLawFirmsQuerySchema, lawFirmIdParamSchema, suspendLawFirmSchema, createLawFirmSchema, updateModulesSchema } from "../dto/lawfirm.dto";
+import { listLawFirmsQuerySchema, lawFirmIdParamSchema, suspendLawFirmSchema, createLawFirmSchema, updateModulesSchema, updateMySettingsSchema } from "../dto/lawfirm.dto";
 import { AppError } from "../../../common/errors/AppError";
 import { prisma } from "../../../database/prisma";
 
@@ -108,5 +108,21 @@ export const lawFirmController = {
     const { websiteHtml } = req.body;
     const firm = await prisma.lawFirm.update({ where: { id }, data: { websiteHtml } });
     res.status(200).json({ success: true, data: { id: firm.id, slug: firm.slug } });
+  },
+
+  // Self-service for an institution's own staff (admin/teacher/general
+  // staff) -- scoped to req.auth.lawFirmId, never an arbitrary :id, so one
+  // institution can never read or change another institution's settings.
+  async getMySettings(req: Request, res: Response) {
+    if (!req.auth?.lawFirmId) throw AppError.badRequest("No institution associated with this account");
+    const result = await lawFirmService.getMySettings(req.auth.lawFirmId);
+    res.status(200).json({ success: true, data: result });
+  },
+
+  async updateMySettings(req: Request, res: Response) {
+    if (!req.auth?.lawFirmId) throw AppError.badRequest("No institution associated with this account");
+    const input = updateMySettingsSchema.parse(req.body);
+    const result = await lawFirmService.updateMySettings(req.auth.lawFirmId, input);
+    res.status(200).json({ success: true, data: result });
   },
 };

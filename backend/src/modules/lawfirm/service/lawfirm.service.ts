@@ -3,7 +3,7 @@ import { emailVerificationService } from "../../email-verification/service/email
 import { AppError } from "../../../common/errors/AppError";
 import { hashPassword } from "../../../common/utils/password";
 import { lawFirmRepository } from "../repository/lawfirm.repository";
-import { ListLawFirmsQuery, CreateLawFirmInput } from "../dto/lawfirm.dto";
+import { ListLawFirmsQuery, CreateLawFirmInput, UpdateMySettingsInput } from "../dto/lawfirm.dto";
 
 // Generates a readable-but-random temporary password -- excludes
 // visually-confusable characters (0/O, 1/l/I) since a Company staff member
@@ -289,5 +289,15 @@ export const lawFirmService = {
     }
 
     return { lawyerRole, staffRole };
+  },
+
+  async getMySettings(lawFirmId: string) {
+    const firm = await lawFirmRepository.findMySettings(lawFirmId);
+    if (!firm) throw AppError.notFound("Institution not found");
+    return firm;
+  },
+
+  async updateMySettings(lawFirmId: string, input: UpdateMySettingsInput) {
+    return lawFirmRepository.updateMySettings(lawFirmId, input);
   },
 };
