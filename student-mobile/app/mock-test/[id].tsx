@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking } from "react-native";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking, AppState, AppStateStatus } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { usePreventScreenCapture } from "expo-screen-capture";
 import { useMockTestDetail, useStartAttempt, useSubmitAttempt, useSubmitWriting } from "../../src/hooks";
 import { resolveMediaUrl } from "../../src/api/client";
+import { mockTestApi } from "../../src/api";
 
 // Question Bank content embeds the passage/transcript inside each
 // question's text (built for the flat Practice screen). When those
@@ -77,6 +80,65 @@ export default function MockTestScreen() {
     negativeMarkingApplied?: boolean;
   } | null>(null);
 
+  // --- Anti-cheating (proctoring) ---
+  // Blocks screenshots/screen-recording for as long as this screen is
+  // mounted. Storage-conscious by design: no video/audio is recorded here,
+  // only a periodic low-res snapshot (see below) -- and the backend deletes
+  // all of it right after a normal (non-flagged) submit.
+  usePreventScreenCapture();
+  const [proctoringCameraPermission, requestProctoringCameraPermission] = useCameraPermissions();
+  const proctorCameraRef = useRef<CameraView>(null);
+  const [writingScores, setWritingScores] = useState<
+    { sectionTitle: string; score: number | null; feedback: string | null }[]
+  >([]);
+
+  const takeProctoringSnapshot = useCallback(async () => {
+    if (!attemptId) return;
+    try {
+      const photo = await proctorCameraRef.current?.takePictureAsync({ quality: 0.3, skipProcessing: true });
+      if (photo?.uri) {
+        await mockTestApi.uploadProctoringSnapshot(attemptId, photo.uri);
+      }
+    } catch {
+      // Best-effort only -- a missed snapshot should never block the test.
+    }
+  }, [attemptId]);
+
+  // Ask for camera permission (silently, no mic needed) once the attempt
+  // starts. If the student declines, the test still proceeds normally --
+  // proctoring is best-effort and must never block someone from testing.
+  useEffect(() => {
+    if (attemptId && !proctoringCameraPermission?.granted) {
+      requestProctoringCameraPermission();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attemptId]);
+
+  // Periodic snapshot every ~3 minutes while the attempt is in progress.
+  useEffect(() => {
+    if (!attemptId || result || !proctoringCameraPermission?.granted) return;
+    const interval = setInterval(takeProctoringSnapshot, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [attemptId, result, proctoringCameraPermission?.granted, takeProctoringSnapshot]);
+
+  // Detect the student leaving the test screen (switching apps, opening
+  // another app/tab, locking the phone) -- each one is logged as a
+  // violation server-side, and the attempt gets auto-flagged for staff
+  // review after 3 of them. Also grabs an extra snapshot on return.
+  useEffect(() => {
+    if (!attemptId || result) return;
+    let lastState: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (lastState === "active" && nextState !== "active") {
+        mockTestApi.recordViolation(attemptId).catch(() => {});
+      } else if (lastState !== "active" && nextState === "active") {
+        takeProctoringSnapshot();
+      }
+      lastState = nextState;
+    });
+    return () => sub.remove();
+  }, [attemptId, result, takeProctoringSnapshot]);
+
   const steps = useMemo(() => (test ? buildSteps(test) : []), [test]);
 
   useEffect(() => {
@@ -95,16 +157,28 @@ export default function MockTestScreen() {
     if (!attemptId) return;
     // Submit any pending Writing essays first, then the MCQ-style answers.
     const writingSteps = steps.filter((s): s is Extract<Step, { kind: "writing" }> => s.kind === "writing");
+    const pendingWritingSteps = writingSteps.filter((s) => essays[s.sectionId]?.trim());
     Promise.all(
-      writingSteps
-        .filter((s) => essays[s.sectionId]?.trim())
-        .map((s) => submitWriting.mutateAsync({ sectionId: s.sectionId, attemptId, essayText: essays[s.sectionId] }))
-    ).finally(() => {
-      const answerList = steps
-        .filter((s): s is Extract<Step, { kind: "question" }> => s.kind === "question")
-        .map((s) => ({ questionId: s.questionId, selectedOption: answers[s.questionId] ?? null }));
-      submitAttempt.mutate({ attemptId, answers: answerList }, { onSuccess: (data) => setResult(data) });
-    });
+      pendingWritingSteps.map((s) => submitWriting.mutateAsync({ sectionId: s.sectionId, attemptId, essayText: essays[s.sectionId] }))
+    )
+      .then((submissions) => {
+        // The AI grades Writing instantly on submit -- capture whatever
+        // score/feedback each submission came back with so the result
+        // screen can show it right away.
+        setWritingScores(
+          submissions.map((sub: any, i: number) => ({
+            sectionTitle: pendingWritingSteps[i].sectionTitle,
+            score: sub?.score ?? null,
+            feedback: sub?.feedback ?? null,
+          }))
+        );
+      })
+      .finally(() => {
+        const answerList = steps
+          .filter((s): s is Extract<Step, { kind: "question" }> => s.kind === "question")
+          .map((s) => ({ questionId: s.questionId, selectedOption: answers[s.questionId] ?? null }));
+        submitAttempt.mutate({ attemptId, answers: answerList }, { onSuccess: (data) => setResult(data) });
+      });
   }, [attemptId, answers, essays, steps]);
 
   useEffect(() => {
@@ -132,8 +206,17 @@ export default function MockTestScreen() {
         <Text style={styles.resultTitle}>Test Complete</Text>
         <Text style={styles.resultScore}>{result.percentage}%</Text>
         <Text style={styles.resultText}>
-          {result.score} / {result.totalQuestions} correct (Writing is graded separately by your instructor)
+          {result.score} / {result.totalQuestions} correct
         </Text>
+        {writingScores.length > 0 && (
+          <View style={{ marginTop: 10, width: "100%" }}>
+            {writingScores.map((w, i) => (
+              <Text key={i} style={styles.resultText}>
+                {w.sectionTitle}: {w.score !== null ? `Band ${w.score}` : "Grading unavailable"}
+              </Text>
+            ))}
+          </View>
+        )}
         {result.negativeMarkingApplied && (
           <Text style={[styles.resultText, { marginTop: 4, fontWeight: "700" }]}>
             Marks (with negative marking): {result.marksScored} / {result.totalMarks}
@@ -172,6 +255,9 @@ export default function MockTestScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+      {proctoringCameraPermission?.granted && (
+        <CameraView ref={proctorCameraRef} style={styles.hiddenCamera} facing="front" />
+      )}
       <View style={[styles.timerBar, isLowTime && { backgroundColor: "#FEF2F2" }]}>
         <Text style={styles.timerText}>
           {index + 1} / {steps.length}
@@ -316,6 +402,7 @@ export default function MockTestScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  hiddenCamera: { position: "absolute", width: 1, height: 1, opacity: 0 },
   timerBar: { flexDirection: "row", justifyContent: "space-between", padding: 14, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
   timerText: { fontWeight: "700", fontSize: 14, flexShrink: 1 },
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#E5E7EB" },
