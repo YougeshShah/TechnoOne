@@ -4,6 +4,7 @@ import { prisma } from "../../database/prisma";
 import { authenticate } from "../../common/middleware/authenticate";
 import { authorize } from "../../common/middleware/authorize";
 import { AppError } from "../../common/errors/AppError";
+import { gradeWritingEssay } from "../ai-grading/ai-grading.service";
 
 const submitSchema = z.object({
   sectionId: z.string().uuid(),
@@ -29,6 +30,7 @@ router.post("/", authorize("STUDENT"), async (req: Request, res: Response) => {
   if (!attempt) throw AppError.notFound("Attempt not found");
   if (attempt.studentId !== req.auth.userId) throw AppError.forbidden("This is not your attempt");
 
+  const section = await prisma.testSection.findUnique({ where: { id: input.sectionId } });
   const wordCount = countWords(input.essayText);
 
   const submission = await prisma.writingSubmission.create({
@@ -40,7 +42,29 @@ router.post("/", authorize("STUDENT"), async (req: Request, res: Response) => {
       wordCount,
     },
   });
-  res.status(201).json({ success: true, data: submission });
+
+  // AI-grade immediately (Claude, IELTS Writing band descriptors) so the
+  // student sees a band score + feedback right after submitting, instead of
+  // waiting for a Company staff member to review it manually. Staff can
+  // still see it in /pending (if this fails) or override the AI score via
+  // PATCH /:id/grade at any time.
+  let graded = submission;
+  if (section?.writingPrompt) {
+    const result = await gradeWritingEssay({
+      writingPrompt: section.writingPrompt,
+      minWordCount: section.minWordCount ?? null,
+      wordCount,
+      essayText: input.essayText,
+    });
+    if (result) {
+      graded = await prisma.writingSubmission.update({
+        where: { id: submission.id },
+        data: { score: result.score, feedback: result.feedback, reviewedAt: new Date() },
+      });
+    }
+  }
+
+  res.status(201).json({ success: true, data: graded });
 });
 
 router.get("/mine", authorize("STUDENT"), async (req: Request, res: Response) => {

@@ -4,6 +4,7 @@ import { prisma } from "../../../database/prisma";
 import { AppError } from "../../../common/errors/AppError";
 import { env } from "../../../config/env";
 import { CreatePromptInput, UpdatePromptInput, SubmitRecordingInput } from "../dto/speaking.dto";
+import { gradeSpeakingRecording } from "../../ai-grading/ai-grading.service";
 
 export const speakingService = {
   // --- Prompts (Company/Institution manage these) ---
@@ -48,7 +49,7 @@ export const speakingService = {
     // since these are personal recordings, not low-sensitivity assets like avatars.
     const relativePath = path.join("speaking", file.filename);
 
-    return prisma.speakingSubmission.create({
+    const created = await prisma.speakingSubmission.create({
       data: {
         studentId,
         promptId: input.promptId,
@@ -56,6 +57,40 @@ export const speakingService = {
         recordingType: input.recordingType,
         durationSeconds: input.durationSeconds,
       },
+    });
+
+    // AI-grade immediately (Gemini transcribes + scores the audio/video in
+    // one call, IELTS Speaking band descriptors) so the student sees their
+    // band scores right after submitting, instead of sitting in
+    // PENDING_GRADING forever with no pipeline behind it.
+    const absoluteFilePath = path.join(process.cwd(), env.storage.localUploadDir, relativePath);
+    const result = await gradeSpeakingRecording({
+      absoluteFilePath,
+      mimeType: file.mimetype,
+      promptText: prompt.promptText,
+      part: prompt.part,
+    });
+
+    if (result) {
+      return prisma.speakingSubmission.update({
+        where: { id: created.id },
+        data: {
+          transcript: result.transcript,
+          fluencyScore: result.fluencyScore,
+          lexicalScore: result.lexicalScore,
+          grammarScore: result.grammarScore,
+          pronunciationScore: result.pronunciationScore,
+          overallBand: result.overallBand,
+          aiFeedback: result.aiFeedback,
+          status: "GRADED",
+          gradedAt: new Date(),
+        },
+      });
+    }
+
+    return prisma.speakingSubmission.update({
+      where: { id: created.id },
+      data: { status: "GRADING_FAILED" },
     });
   },
 
