@@ -1,7 +1,7 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Linking } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Linking, Alert } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSubjects, useMySubscriptions, useMockTests, useLiveClasses, useJoinLiveClass } from "../../src/hooks";
+import { useSubjects, useMySubscriptions, useMockTests, useLiveClasses, useJoinLiveClass, useCourses, useAmountDue } from "../../src/hooks";
 
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -10,6 +10,9 @@ export default function CourseDetailScreen() {
   const { data: mockTests } = useMockTests(id);
   const { data: liveClasses } = useLiveClasses(id);
   const joinLiveClass = useJoinLiveClass();
+  const { data: courses } = useCourses();
+  const course = courses?.find((c) => c.id === id);
+  const { data: amountDueData } = useAmountDue(id);
 
   const handleJoinClass = (classId: string) => {
     joinLiveClass.mutate(classId, {
@@ -33,7 +36,16 @@ export default function CourseDetailScreen() {
       {!isSubscribed && (
         <TouchableOpacity
           style={styles.banner}
-          onPress={() => router.push({ pathname: "/payment/course", params: { courseId: id } })}
+          onPress={() => {
+            if (!amountDueData?.amountDue) {
+              Alert.alert("Fee not set", "This course's fee has not been configured yet. Please contact your institution/admin.");
+              return;
+            }
+            router.push({
+              pathname: "/payment/course",
+              params: { courseId: id, amount: String(amountDueData.amountDue), courseName: course?.name ?? "" },
+            });
+          }}
         >
           <Text style={styles.bannerText}>🔓 Free demo content — tap here to subscribe for full access.</Text>
         </TouchableOpacity>

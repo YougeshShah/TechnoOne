@@ -32,6 +32,10 @@ export function useMySubscriptions() {
   return useQuery({ queryKey: ["my-subscriptions"], queryFn: courseApi.mySubscriptions });
 }
 
+export function useAmountDue(courseId: string) {
+  return useQuery({ queryKey: ["amount-due", courseId], queryFn: () => courseApi.amountDue(courseId), enabled: !!courseId });
+}
+
 export function useSubjects(courseId: string) {
   return useQuery({ queryKey: ["subjects", courseId], queryFn: () => subjectApi.list(courseId), enabled: !!courseId });
 }

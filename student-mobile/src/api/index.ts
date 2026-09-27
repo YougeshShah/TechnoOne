@@ -37,6 +37,12 @@ export const courseApi = {
     const { data } = await apiClient.get<ApiSuccess<CourseSubscription[]>>("/courses/my-subscriptions");
     return data.data;
   },
+  async amountDue(courseId: string) {
+    const { data } = await apiClient.get<ApiSuccess<{ fee: number | null; discount: number | null; amountDue: number | null }>>(
+      `/institution-fee/my-amount-due/${courseId}`
+    );
+    return data.data;
+  },
 };
 
 export const subjectApi = {
