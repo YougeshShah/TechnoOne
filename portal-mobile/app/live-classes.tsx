@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Linking } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Linking, Modal, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +33,18 @@ export default function LiveClassesScreen() {
     mutationFn: (id: string) => liveClassApi.cancel(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["my-live-classes"] }),
     onError: () => Alert.alert("Error", "Could not cancel this class."),
+  });
+
+  const [recordingModalId, setRecordingModalId] = useState<string | null>(null);
+  const [recordingUrlInput, setRecordingUrlInput] = useState("");
+  const uploadRecording = useMutation({
+    mutationFn: ({ id, url }: { id: string; url: string }) => liveClassApi.uploadRecording(id, url),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-live-classes"] });
+      setRecordingModalId(null);
+      setRecordingUrlInput("");
+    },
+    onError: () => Alert.alert("Error", "Could not save the recording link."),
   });
 
   return (
@@ -92,6 +104,19 @@ export default function LiveClassesScreen() {
               </TouchableOpacity>
             )}
 
+            {canManage && item.status === "ENDED" && !item.recordingUrl && (
+              <TouchableOpacity
+                style={styles.addRecordingButton}
+                onPress={() => {
+                  setRecordingModalId(item.id);
+                  setRecordingUrlInput("");
+                }}
+              >
+                <Ionicons name="link-outline" size={16} color={colors.primary} />
+                <Text style={styles.addRecordingButtonText}>Add Recording Link</Text>
+              </TouchableOpacity>
+            )}
+
             {item.status === "ENDED" && item.recordingUrl && (
               <TouchableOpacity style={styles.recordingButton} onPress={() => Linking.openURL(item.recordingUrl as string)}>
                 <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
@@ -101,6 +126,33 @@ export default function LiveClassesScreen() {
           </View>
         )}
       />
+
+      <Modal visible={!!recordingModalId} transparent animationType="slide" onRequestClose={() => setRecordingModalId(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Recording Link</Text>
+            <Text style={styles.modalHint}>Paste the recording URL (Google Drive, YouTube unlisted, etc.) so students can watch it later.</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={recordingUrlInput}
+              onChangeText={setRecordingUrlInput}
+              placeholder="https://..."
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[styles.modalSaveButton, (!recordingUrlInput.trim() || uploadRecording.isPending) && { opacity: 0.6 }]}
+              disabled={!recordingUrlInput.trim() || uploadRecording.isPending}
+              onPress={() => recordingModalId && uploadRecording.mutate({ id: recordingModalId, url: recordingUrlInput.trim() })}
+            >
+              <Text style={styles.modalSaveButtonText}>{uploadRecording.isPending ? "Saving..." : "Save"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancelButton} onPress={() => setRecordingModalId(null)}>
+              <Text style={styles.modalCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -121,6 +173,17 @@ const styles = StyleSheet.create({
   scheduleButtonText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   cancelButton: { alignItems: "center", marginTop: 8 },
   cancelButtonText: { color: "#DC2626", fontWeight: "600", fontSize: 13 },
+  addRecordingButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10 },
+  addRecordingButtonText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg },
+  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 6 },
+  modalHint: { fontSize: 12, color: "#6B7280", marginBottom: spacing.sm },
+  modalInput: { borderWidth: 1, borderColor: "#E5E7EB", borderRadius: radius.sm, padding: spacing.sm, fontSize: 14, marginBottom: spacing.md },
+  modalSaveButton: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 12, alignItems: "center" },
+  modalSaveButtonText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  modalCancelButton: { alignItems: "center", paddingVertical: 12 },
+  modalCancelButtonText: { color: "#6B7280", fontWeight: "600" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { textAlign: "center", color: colors.textSecondary, marginTop: spacing.xl },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: 10, borderWidth: 1, borderColor: colors.border },

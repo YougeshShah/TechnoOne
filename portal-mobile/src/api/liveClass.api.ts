@@ -56,4 +56,8 @@ export const liveClassApi = {
   async cancel(id: string): Promise<void> {
     await apiClient.patch(`/live-classes/${id}/cancel`);
   },
+
+  async uploadRecording(id: string, recordingUrl: string): Promise<void> {
+    await apiClient.patch(`/live-classes/${id}/recording`, { recordingUrl });
+  },
 };
