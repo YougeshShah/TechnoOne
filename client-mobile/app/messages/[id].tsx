@@ -17,6 +17,7 @@ import { useLocalSearchParams, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { messagingApi, MessageItem } from "../../src/api/messaging.api";
 import { useAuthStore } from "../../src/store/authStore";
@@ -40,6 +41,7 @@ export default function ConversationThreadScreen() {
   const queryClient = useQueryClient();
   const listRef = useRef<FlatList>(null);
 
+  const insets = useSafeAreaInsets();
   const [text, setText] = useState("");
   const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
   const [sending, setSending] = useState(false);
@@ -56,6 +58,26 @@ export default function ConversationThreadScreen() {
   });
 
   const messages: MessageItem[] = data?.items ?? [];
+  let lastMineIndex = -1;
+  messages.forEach((m, i) => {
+    if (m.senderId === currentUserId) lastMineIndex = i;
+  });
+
+  const deleteMessage = useMutation({
+    mutationFn: (messageId: string) => messagingApi.deleteMessage(messageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["messages", id] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: () => Alert.alert("Error", "Could not delete this message."),
+  });
+
+  const confirmDelete = (messageId: string) => {
+    Alert.alert("Delete message?", "This can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteMessage.mutate(messageId) },
+    ]);
+  };
 
   useEffect(() => {
     if (messages.length) setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
@@ -140,12 +162,16 @@ export default function ConversationThreadScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={styles.emptyText}>Say hello 👋</Text>}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const isMine = item.senderId === currentUserId;
             const isImage = !!item.attachmentType?.startsWith("image/");
             return (
               <View style={[styles.messageRow, isMine && styles.messageRowMine]}>
-                <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}>
+                <TouchableOpacity
+                  activeOpacity={isMine ? 0.7 : 1}
+                  onLongPress={isMine ? () => confirmDelete(item.id) : undefined}
+                  style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}
+                >
                   {item.attachmentUrl && isImage && (
                     <TouchableOpacity onPress={() => Linking.openURL(attachmentUrlFor(item.attachmentUrl!))}>
                       <Image source={{ uri: attachmentUrlFor(item.attachmentUrl) }} style={styles.attachmentImage} />
@@ -158,7 +184,10 @@ export default function ConversationThreadScreen() {
                     </TouchableOpacity>
                   )}
                   {!!item.content && <Text style={[styles.messageText, isMine && styles.messageTextMine]}>{item.content}</Text>}
-                </View>
+                </TouchableOpacity>
+                {isMine && index === lastMineIndex && (
+                  <Text style={styles.statusText}>{item.isRead ? "Seen" : "Delivered"}</Text>
+                )}
               </View>
             );
           }}
@@ -177,7 +206,7 @@ export default function ConversationThreadScreen() {
         </View>
       )}
 
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { paddingBottom: spacing.sm + insets.bottom }]}>
         <TouchableOpacity onPress={handleAttach} style={styles.attachButton} disabled={sending}>
           <Ionicons name="attach" size={22} color={colors.primary} />
         </TouchableOpacity>
@@ -196,6 +225,7 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.textSecondary, textAlign: "center", marginTop: 40 },
   messageRow: { marginBottom: spacing.sm, alignItems: "flex-start" },
   messageRowMine: { alignItems: "flex-end" },
+  statusText: { fontSize: 10, color: colors.textSecondary, marginTop: 2, marginRight: 2 },
   bubble: { maxWidth: "80%", borderRadius: radius.md, padding: spacing.sm },
   bubbleMine: { backgroundColor: colors.primary, borderBottomRightRadius: 2 },
   bubbleTheirs: { backgroundColor: "#F3F4F6", borderBottomLeftRadius: 2 },
