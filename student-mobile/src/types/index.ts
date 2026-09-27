@@ -6,6 +6,9 @@ export interface AuthUser {
   avatarUrl?: string | null;
   accountType: "STUDENT";
   tenantName?: string | null;
+  // Only present on the full /auth/me response (profileApi.getMe), not on
+  // the login response -- carries the student's institution settings.
+  lawFirm?: { allowRecordingScreenshots?: boolean } | null;
 }
 
 export interface Course {

@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueries } from "@tanstack/react-query";
 import { liveClassApi, LiveClassItem } from "../src/api/liveClass.api";
 import { useMySubscriptions } from "../src/hooks";
@@ -12,6 +13,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function LiveClassesScreen() {
+  const router = useRouter();
   const { data: subscriptions, isLoading: loadingSubs } = useMySubscriptions();
   const activeCourseIds = (subscriptions ?? [])
     .filter((s: any) => s.status === "ACTIVE" || s.status === "TRIAL")
@@ -75,7 +77,12 @@ export default function LiveClassesScreen() {
               </TouchableOpacity>
             )}
             {item.status === "ENDED" && item.recordingUrl && (
-              <TouchableOpacity style={styles.recordingButton} onPress={() => Linking.openURL(item.recordingUrl as string)}>
+              <TouchableOpacity
+                style={styles.recordingButton}
+                onPress={() =>
+                  router.push({ pathname: "/recording-player", params: { url: item.recordingUrl as string, title: item.title } })
+                }
+              >
                 <Ionicons name="play-circle-outline" size={16} color="#2563EB" />
                 <Text style={styles.recordingButtonText}>Watch Recording</Text>
               </TouchableOpacity>

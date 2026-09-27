@@ -42,7 +42,8 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "apiBaseUrl": "https://api.technocraftx.com/api/v1",
