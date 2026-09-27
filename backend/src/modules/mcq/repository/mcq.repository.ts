@@ -83,33 +83,55 @@ export const mcqRepository = {
     return shuffled.map((q: { id: string }) => q.id);
   },
 
-  upsertPracticeAttempt(studentId: string, questionId: string, isCorrect: boolean) {
+  upsertPracticeAttempt(studentId: string, questionId: string, isCorrect: boolean, selectedOption: string | null) {
     return prisma.mcqPracticeAttempt.upsert({
       where: { studentId_questionId: { studentId, questionId } },
-      update: { isCorrect, answeredAt: new Date() },
-      create: { studentId, questionId, isCorrect },
+      update: { isCorrect, selectedOption, answeredAt: new Date() },
+      create: { studentId, questionId, isCorrect, selectedOption },
     });
   },
 
+  // Returns each wrong question together with the student's own most recent
+  // selected answer (from whichever source -- practice or a mock test -- is
+  // more recent), so the review screen can show "your answer" alongside the
+  // correct one instead of just the answer key.
   async findWrongQuestionsForStudent(studentId: string, courseId?: string) {
     const [practiceMisses, testMisses] = await Promise.all([
       prisma.mcqPracticeAttempt.findMany({
         where: { studentId, isCorrect: false },
-        select: { questionId: true },
+        select: { questionId: true, selectedOption: true, answeredAt: true },
       }),
       prisma.testAnswer.findMany({
         where: { isCorrect: false, attempt: { studentId } },
-        select: { questionId: true },
+        select: { questionId: true, selectedOption: true, attempt: { select: { submittedAt: true, startedAt: true } } },
       }),
     ]);
 
-    const questionIds = Array.from(new Set([...practiceMisses.map((m) => m.questionId), ...testMisses.map((m) => m.questionId)]));
+    const latestAnswerByQuestion = new Map<string, { selectedOption: string | null; at: Date }>();
+    for (const m of practiceMisses) {
+      const at = m.answeredAt;
+      const existing = latestAnswerByQuestion.get(m.questionId);
+      if (!existing || at > existing.at) {
+        latestAnswerByQuestion.set(m.questionId, { selectedOption: m.selectedOption, at });
+      }
+    }
+    for (const m of testMisses) {
+      const at = m.attempt.submittedAt ?? m.attempt.startedAt;
+      const existing = latestAnswerByQuestion.get(m.questionId);
+      if (!existing || at > existing.at) {
+        latestAnswerByQuestion.set(m.questionId, { selectedOption: m.selectedOption, at });
+      }
+    }
+
+    const questionIds = Array.from(latestAnswerByQuestion.keys());
     if (questionIds.length === 0) return [];
 
-    return prisma.mcqQuestion.findMany({
+    const questions = await prisma.mcqQuestion.findMany({
       where: { id: { in: questionIds }, ...(courseId ? { courseId } : {}) },
       include: { subject: true },
       orderBy: { createdAt: "desc" },
     });
+
+    return questions.map((q) => ({ ...q, studentAnswer: latestAnswerByQuestion.get(q.id)?.selectedOption ?? null }));
   },
 };

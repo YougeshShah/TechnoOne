@@ -1427,11 +1427,15 @@ model PasswordResetRequest {
 // ------------------------------------------------------------
 
 model McqPracticeAttempt {
-  id         String   @id @default(uuid())
-  studentId  String
-  questionId String
-  isCorrect  Boolean
-  answeredAt DateTime @default(now())
+  id             String   @id @default(uuid())
+  studentId      String
+  questionId     String
+  isCorrect      Boolean
+  // The option/text the student actually chose -- lets "Review Mistakes"
+  // show what they answered, not just the answer key. Nullable because
+  // rows created before this field existed have no value.
+  selectedOption String?
+  answeredAt     DateTime @default(now())
 
   @@unique([studentId, questionId])
   @@index([studentId])

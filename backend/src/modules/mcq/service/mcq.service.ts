@@ -98,7 +98,7 @@ export const mcqService = {
     // are logged but never block the answer response itself.
     if (studentId) {
       await mcqRepository
-        .upsertPracticeAttempt(studentId, id, isCorrect)
+        .upsertPracticeAttempt(studentId, id, isCorrect, selectedOption ?? null)
         .catch((err: unknown) => console.error("Failed to record practice attempt:", err));
     }
 
