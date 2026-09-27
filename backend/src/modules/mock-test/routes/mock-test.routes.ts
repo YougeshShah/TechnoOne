@@ -2,6 +2,7 @@ import { Router } from "express";
 import { mockTestController } from "../controller/mock-test.controller";
 import { authenticate } from "../../../common/middleware/authenticate";
 import { authorize } from "../../../common/middleware/authorize";
+import { proctoringUpload, mapMulterError } from "../../../common/middleware/upload";
 
 const router = Router();
 
@@ -19,5 +20,20 @@ router.delete("/:id/questions/:questionId", authorize("COMPANY", "LAW_FIRM_ADMIN
 
 router.post("/:id/start", authorize("STUDENT"), mockTestController.startAttempt);
 router.post("/attempts/:attemptId/submit", authorize("STUDENT"), mockTestController.submitAttempt);
+
+// Anti-cheating: periodic low-res snapshot upload + "student left the test
+// screen" violation ping, both while an attempt is still in progress.
+router.post(
+  "/attempts/:attemptId/proctoring-snapshot",
+  authorize("STUDENT"),
+  (req, res, next) => {
+    proctoringUpload.single("snapshot")(req, res, (err) => {
+      if (err) return next(mapMulterError(err));
+      next();
+    });
+  },
+  mockTestController.uploadProctoringSnapshot
+);
+router.post("/attempts/:attemptId/violation", authorize("STUDENT"), mockTestController.recordViolation);
 
 export default router;

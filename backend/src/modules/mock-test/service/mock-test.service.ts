@@ -1,4 +1,7 @@
+import fs from "fs";
+import path from "path";
 import { AppError } from "../../../common/errors/AppError";
+import { env } from "../../../config/env";
 import { usageLimitService } from "../../usage-limit/service/usage-limit.service";
 import { mockTestRepository } from "../repository/mock-test.repository";
 import { mcqRepository } from "../../mcq/repository/mcq.repository";
@@ -169,6 +172,18 @@ export const mockTestService = {
     await mockTestRepository.saveAnswers(attemptId, gradedAnswers);
     const updated = await mockTestRepository.submitAttempt(attemptId, correctCount);
 
+    // Anti-cheating snapshots only matter for a later staff review of a
+    // suspicious (flagged) attempt. For every normal attempt, delete them
+    // right away (disk + DB) so they never pile up as dead weight -- they
+    // did their job just by existing during the test.
+    if (!(attempt as any).flagged && (attempt as any).proctoringSnapshotUrls?.length > 0) {
+      for (const relativePath of (attempt as any).proctoringSnapshotUrls as string[]) {
+        const absolutePath = path.join(process.cwd(), env.storage.localUploadDir, relativePath);
+        fs.unlink(absolutePath, () => {}); // best-effort -- never block submission on cleanup
+      }
+      await mockTestRepository.clearProctoringSnapshots(attemptId);
+    }
+
     return {
       score: correctCount,
       totalQuestions: attempt.totalQuestions,
@@ -190,5 +205,23 @@ export const mockTestService = {
     if (attempt.studentId !== studentId) throw AppError.forbidden("This is not your attempt");
     if (!attempt.submittedAt) throw AppError.badRequest("This attempt has not been submitted yet");
     return attempt;
+  },
+
+  // --- Anti-cheating (proctoring) ---
+
+  async addProctoringSnapshot(attemptId: string, studentId: string, relativePath: string) {
+    const attempt = await mockTestRepository.findAttemptById(attemptId);
+    if (!attempt) throw AppError.notFound("Attempt not found");
+    if (attempt.studentId !== studentId) throw AppError.forbidden("This is not your attempt");
+    if (attempt.submittedAt) throw AppError.badRequest("This attempt has already been submitted");
+    return mockTestRepository.addProctoringSnapshot(attemptId, relativePath);
+  },
+
+  async recordViolation(attemptId: string, studentId: string) {
+    const attempt = await mockTestRepository.findAttemptById(attemptId);
+    if (!attempt) throw AppError.notFound("Attempt not found");
+    if (attempt.studentId !== studentId) throw AppError.forbidden("This is not your attempt");
+    if (attempt.submittedAt) throw AppError.badRequest("This attempt has already been submitted");
+    return mockTestRepository.recordViolation(attemptId);
   },
 };

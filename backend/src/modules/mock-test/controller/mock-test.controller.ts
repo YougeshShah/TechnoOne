@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "../../../common/errors/AppError";
 import { mockTestService } from "../service/mock-test.service";
-import { createMockTestSchema, listMockTestsQuerySchema, mockTestIdParamSchema, submitAttemptSchema } from "../dto/mock-test.dto";
+import { createMockTestSchema, listMockTestsQuerySchema, mockTestIdParamSchema, submitAttemptSchema, attemptIdParamSchema } from "../dto/mock-test.dto";
 
 export const mockTestController = {
   async list(req: Request, res: Response) {
@@ -80,5 +80,21 @@ export const mockTestController = {
     const { id: attemptId } = mockTestIdParamSchema.parse({ id: req.params.attemptId });
     const result = await mockTestService.getAttemptResult(attemptId, req.auth.userId);
     res.status(200).json({ success: true, data: result });
+  },
+
+  async uploadProctoringSnapshot(req: Request, res: Response) {
+    if (!req.auth) throw AppError.unauthorized();
+    if (!req.file) throw AppError.badRequest("No snapshot file was uploaded");
+    const { attemptId } = attemptIdParamSchema.parse(req.params);
+    const relativePath = `proctoring/${req.file.filename}`;
+    const result = await mockTestService.addProctoringSnapshot(attemptId, req.auth.userId, relativePath);
+    res.status(201).json({ success: true, data: result });
+  },
+
+  async recordViolation(req: Request, res: Response) {
+    if (!req.auth) throw AppError.unauthorized();
+    const { attemptId } = attemptIdParamSchema.parse(req.params);
+    const result = await mockTestService.recordViolation(attemptId, req.auth.userId);
+    res.status(200).json({ success: true, data: { appLeftCount: result.appLeftCount, flagged: result.flagged } });
   },
 };

@@ -219,6 +219,11 @@ model LawFirm {
   // allowed courses).
   allowedExamTypes String[]     @default([])
 
+  // Whether students at this institution may screenshot/screen-record a
+  // Live Class recording during playback. Blocked by default -- an
+  // institution must explicitly opt in for their own students.
+  allowRecordingScreenshots Boolean @default(false)
+
   users           User[]
   clients         Client[]
   cases           Case[]
@@ -917,6 +922,16 @@ model TestAttempt {
   submittedAt    DateTime?
   score          Int?
   totalQuestions Int
+
+  // Anti-cheating: periodic low-res snapshot paths (never continuous
+  // video/audio -- keeps storage tiny) taken every few minutes plus on each
+  // app-background/foreground transition, and a running count of how many
+  // times the student left the test screen (backgrounded the app) during
+  // the attempt. flagged is auto-set once appLeftCount crosses a threshold,
+  // for a future staff review queue.
+  proctoringSnapshotUrls String[] @default([])
+  appLeftCount           Int      @default(0)
+  flagged                Boolean  @default(false)
 
   answers TestAnswer[]
   writingSubmissions WritingSubmission[]

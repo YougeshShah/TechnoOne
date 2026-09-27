@@ -45,3 +45,7 @@ export const submitAttemptSchema = z.object({
   ),
 });
 export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
+
+export const attemptIdParamSchema = z.object({
+  attemptId: z.string().uuid("Invalid attempt id"),
+});
