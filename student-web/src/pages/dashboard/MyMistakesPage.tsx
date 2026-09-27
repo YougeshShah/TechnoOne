@@ -59,24 +59,36 @@ export function MyMistakesPage() {
                   const optionText = (q as any)[`option${key}`];
                   if (!optionText) return null;
                   const isCorrect = q.correctOption === key;
+                  const isYourWrongPick = (q as any).studentAnswer === key && !isCorrect;
                   return (
                     <Box
                       key={key}
                       sx={{
                         p: 1.25,
-                        border: `1px solid ${isCorrect ? "#16A34A" : "#E5E7EB"}`,
-                        bgcolor: isCorrect ? "#F0FDF4" : "#fff",
+                        border: `1px solid ${isCorrect ? "#16A34A" : isYourWrongPick ? "#DC2626" : "#E5E7EB"}`,
+                        bgcolor: isCorrect ? "#F0FDF4" : isYourWrongPick ? "#FEF2F2" : "#fff",
                         borderRadius: 1.5,
                       }}
                     >
-                      <Typography variant="body2" fontWeight={isCorrect ? 700 : 400}>
-                        {key}. {optionText} {isCorrect && "✓"}
+                      <Typography
+                        variant="body2"
+                        fontWeight={isCorrect || isYourWrongPick ? 700 : 400}
+                        sx={{ color: isYourWrongPick ? "#991B1B" : undefined }}
+                      >
+                        {key}. {optionText} {isCorrect && "✓"} {isYourWrongPick && "✗ Your answer"}
                       </Typography>
                     </Box>
                   );
                 })}
               </Box>
             )}
+
+            {(q.answerType === "FILL_BLANK" || q.answerType === "SHORT_ANSWER" || q.answerType === "MULTI_BLANK") &&
+              (q as any).studentAnswer && (
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 700, color: "#DC2626" }}>
+                  Your answer: {(q as any).studentAnswer}
+                </Typography>
+              )}
 
             {q.correctAnswerText && (
               <Typography variant="body2" sx={{ mb: 2, fontWeight: 700, color: "#16A34A" }}>
