@@ -13,6 +13,7 @@ import {
   FormControlLabel,
   MenuItem,
   Paper,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -27,6 +28,7 @@ import VideocamIcon from "@mui/icons-material/Videocam";
 import { useForm } from "react-hook-form";
 import { liveClassInstitutionApi } from "../../api/liveClassInstitution.api";
 import { userApi } from "../../api/user.api";
+import { lawFirmSettingsApi } from "../../api/lawFirmSettings.api";
 
 const statusColors: Record<string, "default" | "success" | "error"> = {
   SCHEDULED: "default",
@@ -83,6 +85,15 @@ export function LiveClassesPage() {
   const [recordingUrlInput, setRecordingUrlInput] = useState("");
   const hostJoin = useMutation({ mutationFn: (id: string) => liveClassInstitutionApi.hostJoin(id) });
 
+  const { data: institutionSettings } = useQuery({
+    queryKey: ["institution-settings"],
+    queryFn: () => lawFirmSettingsApi.getMine(),
+  });
+  const updateSettings = useMutation({
+    mutationFn: (allowRecordingScreenshots: boolean) => lawFirmSettingsApi.updateMine({ allowRecordingScreenshots }),
+    onSuccess: (data) => qc.setQueryData(["institution-settings"], data),
+  });
+
   const onCreate = (values: FormValues) => {
     create.mutate(values, {
       onSuccess: () => {
@@ -107,10 +118,27 @@ export function LiveClassesPage() {
           Schedule Class
         </Button>
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Classes you schedule here are visible only to your own students — not to other institutions' students, even
         for the same course.
       </Typography>
+
+      <Paper elevation={0} sx={{ border: "1px solid #e5e7eb", p: 2, mb: 3, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Box>
+          <Typography variant="subtitle2" fontWeight={700}>
+            Allow screenshots on class recordings
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            By default, students can't screenshot or screen-record your class recordings while watching them in the
+            app. Turn this on to allow it for your institution's students.
+          </Typography>
+        </Box>
+        <Switch
+          checked={institutionSettings?.allowRecordingScreenshots ?? false}
+          disabled={!institutionSettings || updateSettings.isPending}
+          onChange={(e) => updateSettings.mutate(e.target.checked)}
+        />
+      </Paper>
 
       <TableContainer component={Paper} elevation={0} sx={{ border: "1px solid #e5e7eb" }}>
         <Table size="small">
