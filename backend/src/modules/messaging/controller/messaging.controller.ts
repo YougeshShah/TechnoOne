@@ -6,6 +6,7 @@ import {
   sendMessageSchema,
   conversationIdParamSchema,
   listMessagesQuerySchema,
+  messageIdParamSchema,
 } from "../dto/messaging.dto";
 
 export const messagingController = {
@@ -51,6 +52,13 @@ export const messagingController = {
       success: true,
       data: { attachmentUrl: `chat-attachments/${req.file.filename}`, attachmentType: req.file.mimetype },
     });
+  },
+
+  async deleteMessage(req: Request, res: Response) {
+    if (!req.auth) throw AppError.unauthorized();
+    const { messageId } = messageIdParamSchema.parse(req.params);
+    await messagingService.deleteMessage(req.auth, messageId);
+    res.status(200).json({ success: true, data: null });
   },
 
   async unreadCount(req: Request, res: Response) {

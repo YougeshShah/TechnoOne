@@ -11,6 +11,7 @@ router.get("/conversations", messagingController.listConversations);
 router.post("/conversations", messagingController.createConversation);
 router.get("/conversations/:id/messages", messagingController.listMessages);
 router.post("/conversations/:id/messages", messagingController.sendMessage);
+router.delete("/messages/:messageId", messagingController.deleteMessage);
 router.get("/unread-count", messagingController.unreadCount);
 
 router.post(

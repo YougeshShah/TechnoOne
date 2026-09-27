@@ -192,6 +192,34 @@ export const messagingService = {
     return message;
   },
 
+  // Sender-only, hard delete -- there's no "edited"/"deleted" placeholder
+  // concept here, it simply removes the row. Refreshes the conversation's
+  // preview (lastMessageText/lastMessageAt) so the conversation list
+  // doesn't keep showing a message that no longer exists.
+  async deleteMessage(auth: AuthUser, messageId: string) {
+    const message = await prisma.message.findUnique({ where: { id: messageId } });
+    if (!message) throw AppError.notFound("Message not found.");
+    if (message.senderId !== auth.userId) throw AppError.forbidden("You can only delete your own messages.");
+
+    await prisma.message.delete({ where: { id: messageId } });
+
+    const latest = await prisma.message.findFirst({
+      where: { conversationId: message.conversationId },
+      orderBy: { createdAt: "desc" },
+    });
+    await prisma.conversation.update({
+      where: { id: message.conversationId },
+      data: {
+        lastMessageText: latest
+          ? latest.content || (latest.attachmentType?.startsWith("image/") ? "📷 Photo" : "📎 Attachment")
+          : null,
+        lastMessageAt: latest ? latest.createdAt : null,
+      },
+    });
+
+    return { success: true };
+  },
+
   async unreadCount(auth: AuthUser) {
     const count = await prisma.message.count({
       where: {
