@@ -24,6 +24,7 @@ export default function SpeakingTestScreen() {
   const [phase, setPhase] = useState<Phase>("ready");
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [gradingResult, setGradingResult] = useState<any>(null);
 
   useEffect(() => {
     return () => {
@@ -54,7 +55,8 @@ export default function SpeakingTestScreen() {
       // moment it resolves, upload immediately, no manual upload step.
       if (video?.uri) {
         setPhase("uploading");
-        await speakingApi.submitRecording(prompt.id, video.uri, recordSecondsRef.current);
+        const submission = await speakingApi.submitRecording(prompt.id, video.uri, recordSecondsRef.current);
+        setGradingResult(submission);
         setPhase("done");
       } else {
         throw new Error("No recording produced");
@@ -160,7 +162,22 @@ export default function SpeakingTestScreen() {
       {phase === "done" && (
         <View style={styles.center}>
           <Ionicons name="checkmark-circle" size={48} color="#16A34A" />
-          <Text style={styles.statusText}>Recording submitted. It's pending grading.</Text>
+          {gradingResult?.status === "GRADED" ? (
+            <>
+              <Text style={styles.overallBandText}>Band {gradingResult.overallBand}</Text>
+              <View style={styles.scoreRow}>
+                <Text style={styles.scoreChip}>Fluency {gradingResult.fluencyScore}</Text>
+                <Text style={styles.scoreChip}>Lexical {gradingResult.lexicalScore}</Text>
+                <Text style={styles.scoreChip}>Grammar {gradingResult.grammarScore}</Text>
+                <Text style={styles.scoreChip}>Pronunciation {gradingResult.pronunciationScore}</Text>
+              </View>
+              {gradingResult.aiFeedback && <Text style={styles.feedbackText}>{gradingResult.aiFeedback}</Text>}
+            </>
+          ) : (
+            <Text style={styles.statusText}>
+              Recording submitted. {gradingResult?.status === "GRADING_FAILED" ? "Automatic grading is unavailable right now -- it'll be reviewed by your instructor." : "It's pending grading."}
+            </Text>
+          )}
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
@@ -206,4 +223,8 @@ const styles = StyleSheet.create({
   endButtonText: { color: "#fff", fontWeight: "700" },
   backButton: { backgroundColor: "#2563EB", borderRadius: 10, paddingVertical: 12, paddingHorizontal: 24, marginTop: 8 },
   backButtonText: { color: "#fff", fontWeight: "700" },
+  overallBandText: { fontSize: 32, fontWeight: "800", color: "#2563EB", marginTop: 10 },
+  scoreRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 10 },
+  scoreChip: { backgroundColor: "#EFF6FF", color: "#1D4ED8", fontWeight: "700", fontSize: 12, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999 },
+  feedbackText: { fontSize: 13, color: "#374151", textAlign: "center", marginTop: 14, lineHeight: 19, paddingHorizontal: 8 },
 });
