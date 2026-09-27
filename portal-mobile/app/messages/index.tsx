@@ -2,8 +2,9 @@ import { useState } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { messagingApi } from "../../src/api/messaging.api";
+import { messagingApi, ConversationSummary } from "../../src/api/messaging.api";
 import { Card } from "../../src/components/Card";
 import { colors, spacing, radius } from "../../src/theme/theme";
 import { attachmentUrlFor } from "../../src/utils/staticUrl";
@@ -20,8 +21,10 @@ function formatWhen(iso: string | null) {
 
 export default function MessagesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [contactsVisible, setContactsVisible] = useState(false);
+  const [popupConversation, setPopupConversation] = useState<ConversationSummary | null>(null);
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ["conversations"],
@@ -54,13 +57,15 @@ export default function MessagesScreen() {
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => router.push({ pathname: "/messages/[id]", params: { id: item.id, name: item.otherUser.fullName } })}>
             <Card style={styles.conversationCard}>
-              {item.otherUser.avatarUrl ? (
-                <Image source={{ uri: attachmentUrlFor(item.otherUser.avatarUrl) }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Ionicons name="person" size={20} color="#fff" />
-                </View>
-              )}
+              <TouchableOpacity onPress={() => setPopupConversation(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                {item.otherUser.avatarUrl ? (
+                  <Image source={{ uri: attachmentUrlFor(item.otherUser.avatarUrl) }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Ionicons name="person" size={20} color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
               <View style={{ flex: 1, marginLeft: spacing.sm }}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.name} numberOfLines={1}>{item.otherUser.fullName}</Text>
@@ -87,7 +92,7 @@ export default function MessagesScreen() {
         }
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setContactsVisible(true)}>
+      <TouchableOpacity style={[styles.fab, { bottom: spacing.lg + insets.bottom }]} onPress={() => setContactsVisible(true)}>
         <Ionicons name="create-outline" size={26} color="#fff" />
       </TouchableOpacity>
 
@@ -126,6 +131,33 @@ export default function MessagesScreen() {
           )}
         </View>
       </Modal>
+
+      <Modal visible={!!popupConversation} transparent animationType="fade" onRequestClose={() => setPopupConversation(null)}>
+        <TouchableOpacity style={styles.popupOverlay} activeOpacity={1} onPress={() => setPopupConversation(null)}>
+          <View style={styles.popupCard}>
+            {popupConversation?.otherUser.avatarUrl ? (
+              <Image source={{ uri: attachmentUrlFor(popupConversation.otherUser.avatarUrl) }} style={styles.popupAvatar} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, styles.popupAvatar]}>
+                <Ionicons name="person" size={28} color="#fff" />
+              </View>
+            )}
+            <Text style={styles.popupName}>{popupConversation?.otherUser.fullName}</Text>
+            <Text style={styles.popupRole}>{popupConversation?.otherUser.accountType.replace("_", " ")}</Text>
+            <TouchableOpacity
+              style={styles.popupOpenButton}
+              onPress={() => {
+                if (!popupConversation) return;
+                const conv = popupConversation;
+                setPopupConversation(null);
+                router.push({ pathname: "/messages/[id]", params: { id: conv.id, name: conv.otherUser.fullName } });
+              }}
+            >
+              <Text style={styles.popupOpenButtonText}>Open Chat</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -158,6 +190,13 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
+  popupOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
+  popupCard: { backgroundColor: "#fff", borderRadius: radius.lg, padding: spacing.lg, alignItems: "center", width: 240 },
+  popupAvatar: { width: 64, height: 64, borderRadius: 32, marginBottom: spacing.sm },
+  popupName: { fontSize: 16, fontWeight: "700", color: colors.textPrimary },
+  popupRole: { fontSize: 12, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.md },
+  popupOpenButton: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: 24 },
+  popupOpenButtonText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   modalContainer: { flex: 1, backgroundColor: colors.background, paddingTop: 56 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   modalTitle: { fontSize: 18, fontWeight: "800", color: colors.textPrimary },
