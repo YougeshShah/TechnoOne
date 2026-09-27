@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { precedentApi, UpdatePrecedentPayload } from "../api/precedent.api";
+import { precedentApi, CreatePrecedentPayload, UpdatePrecedentPayload } from "../api/precedent.api";
 
 export function usePrecedentSearch(params: { search?: string; category?: string; page?: number; limit?: number }) {
   return useQuery({
@@ -19,6 +19,17 @@ export function usePrecedentDetail(id: string | undefined) {
 
 export function usePrecedentCategories() {
   return useQuery({ queryKey: ["precedent-categories"], queryFn: () => precedentApi.listCategories() });
+}
+
+export function useCreatePrecedent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreatePrecedentPayload) => precedentApi.create(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["precedents"] });
+      qc.invalidateQueries({ queryKey: ["precedent-categories"] });
+    },
+  });
 }
 
 export function useUpdatePrecedent() {

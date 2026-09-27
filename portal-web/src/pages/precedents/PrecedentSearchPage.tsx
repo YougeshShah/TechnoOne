@@ -229,8 +229,24 @@ export function PrecedentSearchPage() {
                 {detail.decisionDate && <Chip label={`मिति: ${detail.decisionDate}`} size="small" variant="outlined" />}
               </Box>
 
-              <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.9 }}>
+              <Typography
+                variant="body2"
+                onCopy={(e) => e.preventDefault()}
+                onCut={(e) => e.preventDefault()}
+                onContextMenu={(e) => e.preventDefault()}
+                sx={{
+                  whiteSpace: "pre-wrap",
+                  lineHeight: 1.9,
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
+                  MozUserSelect: "none",
+                  msUserSelect: "none",
+                }}
+              >
                 <HighlightedContent text={detail.fullContent} term={inDocSearch} activeMatchIndex={activeMatchIndex} />
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, fontStyle: "italic" }}>
+                यो फैसलाको पाठ copy/select गर्न मिल्दैन।
               </Typography>
 
               {detail.sourceUrl && (

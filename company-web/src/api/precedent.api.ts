@@ -43,6 +43,21 @@ export interface UpdatePrecedentPayload {
   sourceUrl?: string;
 }
 
+export interface CreatePrecedentPayload {
+  title: string;
+  caseType?: string;
+  category?: string;
+  court?: string;
+  benchType?: string;
+  judges?: string;
+  decisionDate?: string;
+  caseNumber?: string;
+  petitioner?: string;
+  respondent?: string;
+  fullContent: string;
+  sourceUrl?: string;
+}
+
 export const precedentApi = {
   async search(params: { search?: string; category?: string; page?: number; limit?: number }): Promise<PrecedentSearchResult> {
     const { data } = await apiClient.get<ApiSuccessResponse<PrecedentSearchResult>>("/precedents", { params });
@@ -56,6 +71,12 @@ export const precedentApi = {
 
   async listCategories(): Promise<string[]> {
     const { data } = await apiClient.get<ApiSuccessResponse<string[]>>("/precedents/categories");
+    return data.data;
+  },
+
+  // Company (and, per the backend route, LAW_FIRM_ADMIN) can add a precedent manually.
+  async create(payload: CreatePrecedentPayload): Promise<PrecedentDetail> {
+    const { data } = await apiClient.post<ApiSuccessResponse<PrecedentDetail>>("/precedents", payload);
     return data.data;
   },
 

@@ -25,8 +25,9 @@ import SaveIcon from "@mui/icons-material/SaveOutlined";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import GavelIcon from "@mui/icons-material/GavelOutlined";
-import { usePrecedentSearch, usePrecedentDetail, usePrecedentCategories, useUpdatePrecedent, useDeletePrecedent } from "../../hooks/usePrecedents";
-import { UpdatePrecedentPayload } from "../../api/precedent.api";
+import AddIcon from "@mui/icons-material/AddCircleOutline";
+import { usePrecedentSearch, usePrecedentDetail, usePrecedentCategories, useCreatePrecedent, useUpdatePrecedent, useDeletePrecedent } from "../../hooks/usePrecedents";
+import { CreatePrecedentPayload, UpdatePrecedentPayload } from "../../api/precedent.api";
 
 function HighlightedContent({ text, term, activeMatchIndex }: { text: string; term: string; activeMatchIndex: number }) {
   const matchRefs = useRef<(HTMLElement | null)[]>([]);
@@ -79,10 +80,24 @@ export function PrecedentSearchPage() {
   const { data: detail, isLoading: loadingDetail } = usePrecedentDetail(viewingId ?? undefined);
   const updateMutation = useUpdatePrecedent();
   const deleteMutation = useDeletePrecedent();
+  const createMutation = useCreatePrecedent();
 
   const [editMode, setEditMode] = useState(false);
   const [editValues, setEditValues] = useState<UpdatePrecedentPayload>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const emptyCreateValues: CreatePrecedentPayload = { title: "", fullContent: "" };
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createValues, setCreateValues] = useState<CreatePrecedentPayload>(emptyCreateValues);
+
+  const handleCreate = () => {
+    createMutation.mutate(createValues, {
+      onSuccess: () => {
+        setCreateOpen(false);
+        setCreateValues(emptyCreateValues);
+      },
+    });
+  };
 
   useEffect(() => {
     if (detail && editMode) {
@@ -149,6 +164,17 @@ export function PrecedentSearchPage() {
         />
         <Button variant="contained" onClick={handleSearchSubmit} sx={{ px: 4 }}>
           खोज्नुहोस्
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setCreateValues(emptyCreateValues);
+            setCreateOpen(true);
+          }}
+          sx={{ px: 3, whiteSpace: "nowrap" }}
+        >
+          नयाँ नजिर थप्नुहोस्
         </Button>
       </Box>
 
@@ -369,6 +395,60 @@ export function PrecedentSearchPage() {
           <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleDelete} disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>नयाँ नजिर थप्नुहोस् (Add New Precedent)</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+            {createMutation.isError && (
+              <Alert severity="error">{(createMutation.error as any)?.response?.data?.message || "Create failed"}</Alert>
+            )}
+            <TextField
+              label="Title *"
+              fullWidth
+              value={createValues.title}
+              onChange={(e) => setCreateValues((v) => ({ ...v, title: e.target.value }))}
+            />
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField label="Category" fullWidth value={createValues.category ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, category: e.target.value }))} />
+              <TextField label="Case Type" fullWidth value={createValues.caseType ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, caseType: e.target.value }))} />
+            </Box>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField label="Court" fullWidth value={createValues.court ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, court: e.target.value }))} />
+              <TextField label="Bench Type" fullWidth value={createValues.benchType ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, benchType: e.target.value }))} />
+            </Box>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField label="Case Number" fullWidth value={createValues.caseNumber ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, caseNumber: e.target.value }))} />
+              <TextField label="Decision Date" fullWidth value={createValues.decisionDate ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, decisionDate: e.target.value }))} />
+            </Box>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField label="Petitioner" fullWidth value={createValues.petitioner ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, petitioner: e.target.value }))} />
+              <TextField label="Respondent" fullWidth value={createValues.respondent ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, respondent: e.target.value }))} />
+            </Box>
+            <TextField label="Judges" fullWidth value={createValues.judges ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, judges: e.target.value }))} />
+            <TextField label="Source URL" fullWidth value={createValues.sourceUrl ?? ""} onChange={(e) => setCreateValues((v) => ({ ...v, sourceUrl: e.target.value }))} />
+            <TextField
+              label="Full Judgment Text *"
+              fullWidth
+              multiline
+              rows={14}
+              value={createValues.fullContent}
+              onChange={(e) => setCreateValues((v) => ({ ...v, fullContent: e.target.value }))}
+              helperText="Paste the full judgment text as published by the court."
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={createMutation.isPending || createValues.title.trim().length < 2 || createValues.fullContent.trim().length < 10}
+          >
+            {createMutation.isPending ? "Saving..." : "Add Precedent"}
           </Button>
         </DialogActions>
       </Dialog>
