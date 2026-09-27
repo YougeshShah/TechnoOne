@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Modal, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { studentNoteApi, StudentNote } from "../src/api/studentNote.api";
 
 export default function MyNotesScreen() {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<StudentNote | null>(null);
@@ -76,7 +78,7 @@ export default function MyNotesScreen() {
           </TouchableOpacity>
         )}
       />
-      <TouchableOpacity style={styles.fab} onPress={openNew}>
+      <TouchableOpacity style={[styles.fab, { bottom: 24 + insets.bottom }]} onPress={openNew}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
