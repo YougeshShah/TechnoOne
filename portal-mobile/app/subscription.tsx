@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Linking, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Linking, Alert, Platform } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../src/api/client";
@@ -16,6 +16,14 @@ interface Plan {
 
 const STATUS_COLORS: Record<string, string> = { PENDING: "#F59E0B", COMPLETED: "#10B981", FAILED: "#EF4444" };
 
+// Same Apple Reader-App restriction as the student app's payment screens --
+// no purchase-related flow, pricing, or plan list at all on iOS. An
+// institution/law firm subscribing to TechnoOne itself is still a
+// "purchase made from inside the app" in Apple's eyes, so this gets the
+// exact same treatment: iOS shows a plain "manage on our website" message,
+// nothing else. Android is unaffected.
+const WEBSITE_URL = "https://technocraftx.com";
+
 export default function SubscriptionScreen() {
   const queryClient = useQueryClient();
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -24,10 +32,12 @@ export default function SubscriptionScreen() {
   const { data: plans } = useQuery({
     queryKey: ["mobile-subscription-plans"],
     queryFn: async () => (await apiClient.get("/firm-payment/plans")).data.data as Plan[],
+    enabled: Platform.OS !== "ios",
   });
   const { data: transactions } = useQuery({
     queryKey: ["mobile-firm-transactions"],
     queryFn: async () => (await apiClient.get("/firm-payment/my-transactions")).data.data,
+    enabled: Platform.OS !== "ios",
   });
 
   const payWithKhalti = async () => {
@@ -78,6 +88,20 @@ export default function SubscriptionScreen() {
       setLoading(null);
     }
   };
+
+  if (Platform.OS === "ios") {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.subtitle}>
+          To manage or renew your institution's TechnoOne subscription, please visit our website. Your account
+          stays fully usable here in the meantime.
+        </Text>
+        <TouchableOpacity style={[styles.payButton, { backgroundColor: colors.primary }]} onPress={() => Linking.openURL(WEBSITE_URL)}>
+          <Text style={styles.payButtonText}>Open technocraftx.com</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

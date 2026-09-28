@@ -1,10 +1,14 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Image } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Image, Linking, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../src/api/client";
+
+// Same Reader-App restriction as app/payment/course.tsx -- no purchase-
+// related flow at all on iOS, submitting proof of payment included.
+const WEBSITE_URL = "https://technocraftx.com";
 
 export default function PaymentVoucherScreen() {
   const router = useRouter();
@@ -34,6 +38,20 @@ export default function PaymentVoucherScreen() {
     const result = await DocumentPicker.getDocumentAsync({ type: ["image/*", "application/pdf"] });
     if (!result.canceled && result.assets?.[0]) setFile(result.assets[0]);
   };
+
+  if (Platform.OS === "ios") {
+    return (
+      <View style={[styles.container, styles.content]}>
+        <Text style={styles.subtitle}>
+          To pay and enroll, please visit our website. Once your payment is approved there, come back to the app
+          to access your course.
+        </Text>
+        <TouchableOpacity style={styles.submitButton} onPress={() => Linking.openURL(WEBSITE_URL)}>
+          <Text style={styles.submitButtonText}>Open technocraftx.com</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

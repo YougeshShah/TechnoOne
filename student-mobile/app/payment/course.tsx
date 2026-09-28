@@ -1,9 +1,17 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Alert, Platform } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "../../src/api/client";
+
+// Apple's App Store rules for a "Reader" app like ours (IELTS/legal course
+// content) don't allow ANY in-app purchase flow on iOS -- not even a button
+// that redirects out to an external payment gateway. Everything has to
+// happen entirely outside the app -- the exact pattern Netflix, Spotify and
+// Amazon Kindle use on iOS. Android has no such restriction, so
+// eSewa/Khalti/Voucher stay fully in-app there.
+const WEBSITE_URL = "https://technocraftx.com";
 
 export default function CoursePaymentScreen() {
   const router = useRouter();
@@ -54,6 +62,22 @@ export default function CoursePaymentScreen() {
       setLoading(null);
     }
   };
+
+  if (Platform.OS === "ios") {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>{courseName || "Enroll in Course"}</Text>
+        <Text style={styles.amount}>NPR {amount}</Text>
+        <Text style={styles.subtitle}>
+          To enroll in this course, please visit our website. Once you've paid there, come back to the app to
+          start learning.
+        </Text>
+        <TouchableOpacity style={[styles.payButton, { backgroundColor: "#2563EB" }]} onPress={() => Linking.openURL(WEBSITE_URL)}>
+          <Text style={styles.payButtonText}>Open technocraftx.com</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
