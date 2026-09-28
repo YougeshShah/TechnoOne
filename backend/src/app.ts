@@ -55,6 +55,17 @@ app.use(
   })
 );
 
+// Payment QR codes (institution + Company) -- same reasoning as avatars:
+// plain static files so <img src="..."> works directly cross-origin from
+// the web apps. Previously this folder was never mounted, so a QR image
+// upload succeeded but the image never actually loaded anywhere.
+app.use(
+  "/uploads/payment-qr",
+  express.static(require("path").join(process.cwd(), env.storage.localUploadDir, "payment-qr"), {
+    setHeaders: (res) => res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"),
+  })
+);
+
 // Request logging
 app.use(morgan(env.nodeEnv === "development" ? "dev" : "combined"));
 

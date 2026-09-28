@@ -29,6 +29,7 @@ import { FirmVouchersPage } from "../pages/firm-vouchers/FirmVouchersPage";
 import { TransactionsPage } from "../pages/transactions/TransactionsPage";
 import { UserAdminPage } from "../pages/user-admin/UserAdminPage";
 import { ProfilePage } from "../pages/profile/ProfilePage";
+import { CompanySettingsPage } from "../pages/company-settings/CompanySettingsPage";
 import { DashboardLayout } from "../components/layout/DashboardLayout";
 import { ProtectedRoute } from "../components/common/ProtectedRoute";
 
@@ -68,6 +69,7 @@ export function AppRoutes() {
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/user-admin" element={<UserAdminPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/company-settings" element={<CompanySettingsPage />} />
         </Route>
       </Route>
 

@@ -92,7 +92,27 @@ export const institutionFeeController = {
   async getMyQrCode(req: Request, res: Response) {
     if (!req.auth?.lawFirmId) throw AppError.forbidden("This action requires an institution account");
     const result = await institutionFeeService.getPaymentQrCode(req.auth.lawFirmId);
-    res.status(200).json({ success: true, data: { paymentQrCodeUrl: result } });
+    res.status(200).json({ success: true, data: { paymentQrCodeUrl: result ? `/uploads/${result}` : null } });
+  },
+
+  // --- Company's own QR code ---
+  async uploadCompanyQrCode(req: Request, res: Response) {
+    if (!req.file) throw AppError.badRequest("No QR code image was uploaded");
+    const path = require("path");
+    const relativePath = path.join("payment-qr", req.file.filename);
+    const result = await institutionFeeService.setCompanyQrCode(relativePath);
+    res.status(200).json({ success: true, message: "Company payment QR code updated", data: result });
+  },
+  async getCompanyQrCode(req: Request, res: Response) {
+    const result = await institutionFeeService.getCompanyQrCode();
+    res.status(200).json({ success: true, data: { paymentQrCodeUrl: result ? `/uploads/${result}` : null } });
+  },
+
+  // --- Student-facing: whichever QR they should scan (institution's, or Company's if a direct student) ---
+  async getQrCodeForStudent(req: Request, res: Response) {
+    if (!req.auth) throw AppError.unauthorized();
+    const result = await institutionFeeService.resolveQrCodeForStudent(req.auth.lawFirmId ?? null);
+    res.status(200).json({ success: true, data: { paymentQrCodeUrl: result ? `/uploads/${result}` : null } });
   },
 
   // --- Transactions + Excel export ---

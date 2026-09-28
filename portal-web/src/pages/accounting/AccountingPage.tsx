@@ -22,6 +22,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/DeleteOutline";
 import { accountingApi } from "../../api/accounting.api";
 import { liveClassInstitutionApi } from "../../api/liveClassInstitution.api";
+import { resolveMediaUrl } from "../../api/client";
 import { PersonSearchSelect } from "../../components/accounting/PersonSearchSelect";
 
 export function AccountingPage() {
@@ -323,7 +324,11 @@ function QrCodeTab() {
         </Typography>
         {data?.paymentQrCodeUrl && (
           <Box sx={{ mb: 2 }}>
-            <img src={data.paymentQrCodeUrl} alt="Payment QR" style={{ maxWidth: 200, border: "1px solid #E5E7EB", borderRadius: 8 }} />
+            <img
+              src={resolveMediaUrl(data.paymentQrCodeUrl) ?? undefined}
+              alt="Payment QR"
+              style={{ maxWidth: 200, border: "1px solid #E5E7EB", borderRadius: 8 }}
+            />
           </Box>
         )}
         <Button variant="outlined" component="label">

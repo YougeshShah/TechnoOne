@@ -121,6 +121,33 @@ export const institutionFeeService = {
     return firm?.paymentQrCodeUrl ?? null;
   },
 
+  // --- Company's own QR code (for direct students -- no institution) ---
+  async getOrCreateCompanySettings() {
+    let settings = await prisma.companySettings.findFirst();
+    if (!settings) settings = await prisma.companySettings.create({ data: {} });
+    return settings;
+  },
+
+  async setCompanyQrCode(relativePath: string) {
+    const settings = await this.getOrCreateCompanySettings();
+    return prisma.companySettings.update({ where: { id: settings.id }, data: { paymentQrCodeUrl: relativePath } });
+  },
+
+  async getCompanyQrCode() {
+    const settings = await prisma.companySettings.findFirst();
+    return settings?.paymentQrCodeUrl ?? null;
+  },
+
+  // Which QR should a student see -- their institution's if it has one set,
+  // otherwise the Company's own (covers direct students with no institution).
+  async resolveQrCodeForStudent(lawFirmId: string | null) {
+    if (lawFirmId) {
+      const institutionQr = await this.getPaymentQrCode(lawFirmId);
+      if (institutionQr) return institutionQr;
+    }
+    return this.getCompanyQrCode();
+  },
+
   // --- Transactions list + Excel export ---
   // search matches against the student's name, email, or phone number --
   // real-world need: staff looking up "did this specific student pay"

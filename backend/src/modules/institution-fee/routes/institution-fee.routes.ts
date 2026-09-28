@@ -43,6 +43,23 @@ router.post(
 );
 router.get("/qr-code/my", authorize("LAW_FIRM_ADMIN", "LAWYER", "STAFF"), requireTenantPermission("accounting.manage"), institutionFeeController.getMyQrCode);
 
+// Company's own QR code (for direct students with no institution).
+router.post(
+  "/qr-code/company",
+  authorize("COMPANY"),
+  (req, res, next) => {
+    qrCodeUpload.single("qrCode")(req, res, (err) => {
+      if (err) return next(mapMulterError(err));
+      next();
+    });
+  },
+  institutionFeeController.uploadCompanyQrCode
+);
+router.get("/qr-code/company", authorize("COMPANY"), institutionFeeController.getCompanyQrCode);
+
+// Student-facing: resolves to their institution's QR, or the Company's if they're a direct student.
+router.get("/qr-code/student", authorize("STUDENT"), institutionFeeController.getQrCodeForStudent);
+
 // Dashboard summary (total collected, pending count, this-month collected).
 router.get("/summary/institution", authorize("LAW_FIRM_ADMIN", "LAWYER", "STAFF"), requireTenantPermission("accounting.manage"), institutionFeeController.getSummaryAsInstitution);
 

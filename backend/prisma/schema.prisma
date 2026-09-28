@@ -1981,3 +1981,13 @@ model TicketComment {
 
   @@index([ticketId, createdAt])
 }
+
+// Company's own payment QR code, shown to students who don't belong to any
+// institution (direct students) when paying by voucher upload. Singleton
+// table -- at most one row ever exists (see institutionFeeService.getOrCreateCompanySettings).
+model CompanySettings {
+  id               String   @id @default(cuid())
+  paymentQrCodeUrl String?
+  updatedAt        DateTime @updatedAt
+}
+

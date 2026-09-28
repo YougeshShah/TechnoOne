@@ -11,4 +11,8 @@ export const institutionFeeApi = {
     const { data } = await apiClient.get(`/institution-fee/my-amount-due/${courseId}`);
     return data.data;
   },
+  async myQrCode(): Promise<{ paymentQrCodeUrl: string | null }> {
+    const { data } = await apiClient.get(`/institution-fee/qr-code/student`);
+    return data.data;
+  },
 };

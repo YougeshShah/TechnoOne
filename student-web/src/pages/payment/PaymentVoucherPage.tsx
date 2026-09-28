@@ -4,6 +4,8 @@ import { Alert, Box, Button, Chip, MenuItem, Paper, TextField, Typography } from
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { courseApi } from "../../api/course.api";
 import { paymentVoucherApi } from "../../api/paymentVoucher.api";
+import { institutionFeeApi } from "../../api/institutionFee.api";
+import { resolveMediaUrl } from "../../api/client";
 
 const STATUS_COLOR: Record<string, "warning" | "success" | "error"> = {
   PENDING: "warning",
@@ -19,6 +21,7 @@ export function PaymentVoucherPage() {
 
   const { data: courses } = useQuery({ queryKey: ["courses"], queryFn: () => courseApi.list() });
   const { data: myVouchers } = useQuery({ queryKey: ["my-vouchers"], queryFn: () => paymentVoucherApi.myVouchers() });
+  const { data: qrCode } = useQuery({ queryKey: ["my-payment-qr"], queryFn: () => institutionFeeApi.myQrCode() });
 
   const queryClient = useQueryClient();
   const upload = useMutation({
@@ -40,6 +43,22 @@ export function PaymentVoucherPage() {
         If you paid by bank transfer or cash, upload your receipt here. Your institution will review it and grant
         access to that specific course once approved.
       </Typography>
+
+      {qrCode?.paymentQrCodeUrl && (
+        <Paper elevation={0} sx={{ p: 3, border: "1px solid #E5E7EB", borderRadius: 3, mb: 3, textAlign: "center" }}>
+          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+            Scan to Pay
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
+            Scan this QR code with your banking app, pay the course amount, then upload your proof below.
+          </Typography>
+          <img
+            src={resolveMediaUrl(qrCode.paymentQrCodeUrl) ?? undefined}
+            alt="Payment QR"
+            style={{ maxWidth: 220, borderRadius: 8, border: "1px solid #E5E7EB" }}
+          />
+        </Paper>
+      )}
 
       <Paper elevation={0} sx={{ p: 3, border: "1px solid #E5E7EB", borderRadius: 3, mb: 4 }}>
         {upload.isError && (
