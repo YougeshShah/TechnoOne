@@ -69,7 +69,36 @@ export function MockTestTakePage() {
       return;
     }
     const timer = setTimeout(() => setSecondsLeft((s) => (s !== null ? s - 1 : null)), 1000);
-    return () => clearTimeout(timer);
+    
+  // Anti-Cheat Security Listeners
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        alert("Warning: Tab switching or minimizing is strictly prohibited during the mock test!");
+      }
+    };
+    const handleCopyPaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      alert("Copying or pasting text is disabled during the exam.");
+    };
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("copy", handleCopyPaste);
+    document.addEventListener("paste", handleCopyPaste);
+    document.addEventListener("contextmenu", handleContextMenu);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("copy", handleCopyPaste);
+      document.removeEventListener("paste", handleCopyPaste);
+      document.removeEventListener("contextmenu", handleContextMenu);
+    };
+  }, []);
+
+  return () => clearTimeout(timer);
   }, [secondsLeft, result, handleSubmit]);
 
   if (loadingTest || !test) {
