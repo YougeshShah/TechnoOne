@@ -97,4 +97,19 @@ export const mockTestController = {
     const result = await mockTestService.recordViolation(attemptId, req.auth.userId);
     res.status(200).json({ success: true, data: { appLeftCount: result.appLeftCount, flagged: result.flagged } });
   },
+
+  async listFlaggedAttempts(req: Request, res: Response) {
+    const requesterLawFirmId = req.auth?.accountType === "LAW_FIRM_ADMIN" ? req.auth.lawFirmId ?? undefined : undefined;
+    const mockTestId = typeof req.query.mockTestId === "string" && req.query.mockTestId ? req.query.mockTestId : undefined;
+    const result = await mockTestService.listFlaggedAttempts({ requesterLawFirmId, mockTestId });
+    res.status(200).json({ success: true, data: result });
+  },
+
+  async resolveFlaggedAttempt(req: Request, res: Response) {
+    const { attemptId } = attemptIdParamSchema.parse(req.params);
+    const { action } = z.object({ action: z.enum(["APPROVE", "DISQUALIFY"]) }).parse(req.body);
+    const requesterLawFirmId = req.auth?.accountType === "LAW_FIRM_ADMIN" ? req.auth.lawFirmId ?? undefined : undefined;
+    const result = await mockTestService.resolveFlaggedAttempt(attemptId, action, requesterLawFirmId);
+    res.status(200).json({ success: true, data: result });
+  },
 };

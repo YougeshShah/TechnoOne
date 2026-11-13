@@ -202,6 +202,8 @@ export interface TestAttemptSummary {
   totalQuestions: number;
   startedAt: string;
   submittedAt: string | null;
+  flagged?: boolean;
+  appLeftCount?: number;
   mockTest: { title: string };
 }
 export const progressApi = {
@@ -211,6 +213,14 @@ export const progressApi = {
   },
   async myAttempts(): Promise<TestAttemptSummary[]> {
     const { data } = await apiClient.get<ApiSuccess<TestAttemptSummary[]>>("/mock-tests/my-attempts");
+    return data.data;
+  },
+  async getAttemptDetail(attemptId: string): Promise<any> {
+    const { data } = await apiClient.get<ApiSuccess<any>>(`/mock-tests/attempts/${attemptId}`);
+    return data.data;
+  },
+  async getPracticeHistory(): Promise<any[]> {
+    const { data } = await apiClient.get<ApiSuccess<any[]>>("/study-progress/practice-history");
     return data.data;
   },
 };

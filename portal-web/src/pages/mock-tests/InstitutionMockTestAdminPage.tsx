@@ -8,6 +8,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   MenuItem,
   Paper,
@@ -20,19 +21,29 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/DeleteOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFileOutlined";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import BlockIcon from "@mui/icons-material/Block";
 import { useForm } from "react-hook-form";
 import { apiClient } from "../../api/client";
 import { liveClassInstitutionApi } from "../../api/liveClassInstitution.api";
 import { useInstitutionMockTestsAdmin, useInstitutionMockTestAdminActions } from "../../hooks/useInstitutionMockTestAdmin";
 import { useInstitutionSectionsAdmin, useInstitutionSectionAdminActions } from "../../hooks/useInstitutionSectionAdmin";
-import { CreateMockTestPayload } from "../../api/institutionMockTest.api";
+import { CreateMockTestPayload, institutionMockTestApi, FlaggedAttemptItem } from "../../api/institutionMockTest.api";
 import { CreateSectionPayload } from "../../api/institutionTestSection.api";
 
 const sectionTypes = ["MCQ", "READING", "LISTENING", "WRITING", "SPEAKING"];
+
+function getSnapshotFullUrl(relPath: string): string {
+  const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || "https://api.technocraftx.com/api/v1";
+  const origin = apiBase.replace(/\/api\/v1\/?$/, "");
+  const clean = relPath.replace(/^\/+/, "").replace(/^uploads\/+/, "");
+  return `${origin}/uploads/${clean}`;
+}
 
 function useInstitutionSubjectsForCourse(courseId: string) {
   return useQuery({
@@ -43,6 +54,172 @@ function useInstitutionSubjectsForCourse(courseId: string) {
     },
     enabled: !!courseId,
   });
+}
+
+function FlaggedAttemptsDialog({
+  mockTestId,
+  mockTestTitle,
+  onClose,
+}: {
+  mockTestId?: string;
+  mockTestTitle?: string;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { data: flaggedAttempts, isLoading } = useQuery({
+    queryKey: ["institution-flagged-attempts", mockTestId ?? "ALL"],
+    queryFn: () => institutionMockTestApi.listFlaggedAttempts(mockTestId),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ attemptId, action }: { attemptId: string; action: "APPROVE" | "DISQUALIFY" }) =>
+      institutionMockTestApi.resolveFlaggedAttempt(attemptId, action),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["institution-flagged-attempts"] });
+    },
+  });
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="md">
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Box>
+          <Typography variant="h6" fontWeight={800}>
+            Proctoring Review Queue {mockTestTitle ? `— ${mockTestTitle}` : "(All Mock Tests)"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Reviewing an attempt (Approve or Disqualify) automatically deletes its proctoring snapshots from server storage.
+          </Typography>
+        </Box>
+        <Chip
+          icon={<WarningAmberIcon />}
+          label={`${flaggedAttempts?.length ?? 0} Pending`}
+          color={(flaggedAttempts?.length ?? 0) > 0 ? "error" : "success"}
+          size="small"
+        />
+      </DialogTitle>
+      <Divider />
+      <DialogContent sx={{ bgcolor: "#F9FAFB" }}>
+        {isLoading && <Typography sx={{ py: 4, textAlign: "center" }}>Loading flagged attempts...</Typography>}
+        {!isLoading && (flaggedAttempts?.length ?? 0) === 0 && (
+          <Paper elevation={0} sx={{ p: 4, textAlign: "center", border: "1px solid #E5E7EB", borderRadius: 2 }}>
+            <Typography variant="body1" fontWeight={600}>
+              No flagged attempts awaiting review!
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              All suspicious attempts have been resolved and their snapshots purged.
+            </Typography>
+          </Paper>
+        )}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {flaggedAttempts?.map((item: FlaggedAttemptItem) => (
+            <Paper key={item.id} elevation={0} sx={{ p: 2.5, border: "1px solid #FECACA", bgcolor: "#fff", borderRadius: 2.5 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={800}>
+                    {item.student?.fullName || "Student"} ({item.student?.email || item.studentId})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                    Test: <b>{item.mockTest?.title || "Mock Test"}</b> • Started: {new Date(item.startedAt).toLocaleString()}
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 1, mt: 1, flexWrap: "wrap" }}>
+                    <Chip size="small" color="error" label={`Tab/App Switches: ${item.appLeftCount}`} />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={item.submittedAt ? `Score: ${item.score ?? 0}/${item.totalQuestions}` : "Not Submitted"}
+                    />
+                    <Chip size="small" variant="outlined" label={`Snapshots: ${item.proctoringSnapshotUrls?.length ?? 0}`} />
+                  </Box>
+                </Box>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="success"
+                    startIcon={<CheckCircleOutlineIcon />}
+                    disabled={resolveMutation.isPending}
+                    onClick={() => resolveMutation.mutate({ attemptId: item.id, action: "APPROVE" })}
+                  >
+                    Approve & Purge Photos
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="error"
+                    startIcon={<BlockIcon />}
+                    disabled={resolveMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm("Disqualify this attempt (sets score to 0) and purge snapshots?")) {
+                        resolveMutation.mutate({ attemptId: item.id, action: "DISQUALIFY" });
+                      }
+                    }}
+                  >
+                    Disqualify (0 Score)
+                  </Button>
+                </Box>
+              </Box>
+
+              {item.proctoringSnapshotUrls && item.proctoringSnapshotUrls.length > 0 ? (
+                <Box sx={{ display: "flex", gap: 1.5, overflowX: "auto", py: 1 }}>
+                  {item.proctoringSnapshotUrls.map((relUrl, idx) => {
+                    const fullUrl = getSnapshotFullUrl(relUrl);
+                    return (
+                      <Box
+                        key={idx}
+                        component="a"
+                        href={fullUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          display: "block",
+                          width: 140,
+                          height: 105,
+                          borderRadius: 1.5,
+                          overflow: "hidden",
+                          border: "2px solid #EF4444",
+                          flexShrink: 0,
+                          position: "relative",
+                          bgcolor: "#000",
+                        }}
+                      >
+                        <img
+                          src={fullUrl}
+                          alt={`Snapshot ${idx + 1}`}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            position: "absolute",
+                            bottom: 2,
+                            right: 4,
+                            bgcolor: "rgba(0,0,0,0.7)",
+                            color: "#fff",
+                            px: 0.5,
+                            borderRadius: 0.5,
+                            fontSize: 10,
+                          }}
+                        >
+                          #{idx + 1}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  No camera snapshots were captured for this attempt (webcam unavailable or blocked).
+                </Typography>
+              )}
+            </Paper>
+          ))}
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
 }
 
 function SectionsDialog({ mockTestId, onClose }: { mockTestId: string; onClose: () => void }) {
@@ -161,8 +338,15 @@ export function InstitutionMockTestAdminPage() {
   const { data: tests, isLoading } = useInstitutionMockTestsAdmin(courseId || undefined);
   const { create, publish } = useInstitutionMockTestAdminActions();
 
+  const { data: allFlagged } = useQuery({
+    queryKey: ["institution-flagged-attempts", "ALL"],
+    queryFn: () => institutionMockTestApi.listFlaggedAttempts(),
+  });
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sectionsForTestId, setSectionsForTestId] = useState<string | null>(null);
+  const [flaggedModalTarget, setFlaggedModalTarget] = useState<{ id?: string; title?: string } | null>(null);
+
   const { register, handleSubmit, reset, formState } = useForm<CreateMockTestPayload>({
     defaultValues: { durationMinutes: 60, questionCount: 25, marksPerQuestion: 1, negativeMarkingPercent: 0 },
   });
@@ -181,13 +365,23 @@ export function InstitutionMockTestAdminPage() {
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3, flexWrap: "wrap", gap: 1.5 }}>
         <Typography variant="h5" fontWeight={700}>
           Mock Tests
         </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)} disabled={!courseId}>
-          Create Mock Test
-        </Button>
+        <Box sx={{ display: "flex", gap: 1.5 }}>
+          <Button
+            variant={(allFlagged?.length ?? 0) > 0 ? "contained" : "outlined"}
+            color="error"
+            startIcon={<WarningAmberIcon />}
+            onClick={() => setFlaggedModalTarget({})}
+          >
+            Flagged Attempts ({allFlagged?.length ?? 0})
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)} disabled={!courseId}>
+            Create Mock Test
+          </Button>
+        </Box>
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
@@ -225,27 +419,38 @@ export function InstitutionMockTestAdminPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {tests?.map((test) => (
-                <TableRow key={test.id} hover>
-                  <TableCell>{test.title}</TableCell>
-                  <TableCell>{test.subject?.name ?? "—"}</TableCell>
-                  <TableCell align="center">{test.durationMinutes} min</TableCell>
-                  <TableCell align="center">{test._count?.questions ?? 0}</TableCell>
-                  <TableCell align="center">
-                    {test.isPublished ? <Chip label="Published" color="success" size="small" /> : <Chip label="Draft" size="small" />}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button size="small" onClick={() => setSectionsForTestId(test.id)}>
-                      Sections
-                    </Button>
-                    {!test.isPublished && (
-                      <Button size="small" onClick={() => publish.mutate(test.id)} disabled={publish.isPending}>
-                        Publish
+              {tests?.map((test) => {
+                const flaggedForThisTest = (allFlagged ?? []).filter((f) => f.mockTestId === test.id).length;
+                return (
+                  <TableRow key={test.id} hover>
+                    <TableCell>{test.title}</TableCell>
+                    <TableCell>{test.subject?.name ?? "—"}</TableCell>
+                    <TableCell align="center">{test.durationMinutes} min</TableCell>
+                    <TableCell align="center">{test._count?.questions ?? 0}</TableCell>
+                    <TableCell align="center">
+                      {test.isPublished ? <Chip label="Published" color="success" size="small" /> : <Chip label="Draft" size="small" />}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        color={flaggedForThisTest > 0 ? "error" : "inherit"}
+                        startIcon={<WarningAmberIcon fontSize="small" />}
+                        onClick={() => setFlaggedModalTarget({ id: test.id, title: test.title })}
+                      >
+                        Flagged ({flaggedForThisTest})
                       </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                      <Button size="small" onClick={() => setSectionsForTestId(test.id)}>
+                        Sections
+                      </Button>
+                      {!test.isPublished && (
+                        <Button size="small" onClick={() => publish.mutate(test.id)} disabled={publish.isPending}>
+                          Publish
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {tests?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} align="center">
@@ -343,6 +548,13 @@ export function InstitutionMockTestAdminPage() {
       </Dialog>
 
       {sectionsForTestId && <SectionsDialog mockTestId={sectionsForTestId} onClose={() => setSectionsForTestId(null)} />}
+      {flaggedModalTarget && (
+        <FlaggedAttemptsDialog
+          mockTestId={flaggedModalTarget.id}
+          mockTestTitle={flaggedModalTarget.title}
+          onClose={() => setFlaggedModalTarget(null)}
+        />
+      )}
     </Box>
   );
 }

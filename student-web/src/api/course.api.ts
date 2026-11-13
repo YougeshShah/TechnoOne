@@ -83,4 +83,19 @@ export const mockTestApi = {
     const { data } = await apiClient.get<ApiSuccessResponse<any[]>>("/mock-tests/my-attempts");
     return data.data;
   },
+
+  async uploadProctoringSnapshot(attemptId: string, blob: Blob): Promise<void> {
+    const formData = new FormData();
+    formData.append("snapshot", blob, "snapshot.jpg");
+    await apiClient.post(`/mock-tests/attempts/${attemptId}/proctoring-snapshot`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  async recordViolation(attemptId: string): Promise<{ appLeftCount: number; flagged: boolean }> {
+    const { data } = await apiClient.post<ApiSuccessResponse<{ appLeftCount: number; flagged: boolean }>>(
+      `/mock-tests/attempts/${attemptId}/violation`
+    );
+    return data.data;
+  },
 };

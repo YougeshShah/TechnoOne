@@ -20,11 +20,20 @@ export const listPromptsQuerySchema = z.object({
   part: z.coerce.number().int().min(1).max(3).optional(),
 });
 
-export const submitRecordingSchema = z.object({
-  promptId: z.string().uuid(),
-  recordingType: z.enum(["video", "audio"]),
-  durationSeconds: z.coerce.number().int().min(1).optional(),
-});
+export const submitRecordingSchema = z
+  .object({
+    // Either promptId (dedicated Speaking practice) OR both attemptId and
+    // sectionId (recording submitted from inside a Mock Test's own
+    // SPEAKING section) must be provided -- never both, never neither.
+    promptId: z.string().uuid().optional(),
+    attemptId: z.string().uuid().optional(),
+    sectionId: z.string().uuid().optional(),
+    recordingType: z.enum(["video", "audio"]),
+    durationSeconds: z.coerce.number().int().min(1).optional(),
+  })
+  .refine((data) => !!data.promptId !== !!(data.attemptId && data.sectionId), {
+    message: "Provide either promptId, or both attemptId and sectionId, but not both.",
+  });
 export type SubmitRecordingInput = z.infer<typeof submitRecordingSchema>;
 
 export const idParamSchema = z.object({ id: z.string().uuid() });

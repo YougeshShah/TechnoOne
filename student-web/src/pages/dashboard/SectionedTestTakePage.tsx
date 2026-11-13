@@ -10,25 +10,26 @@ import {
   TextField,
   Divider,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
 } from "@mui/material";
 import HeadphonesIcon from "@mui/icons-material/HeadphonesOutlined";
 import MenuBookIcon from "@mui/icons-material/MenuBookOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNoteOutlined";
 import MicIcon from "@mui/icons-material/MicNoneOutlined";
+import FlagIcon from "@mui/icons-material/Flag";
+import OutlinedFlagIcon from "@mui/icons-material/OutlinedFlag";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import { useMockTestDetail, useStartAttempt, useSubmitAttempt, useSubmitWriting } from "../../hooks/useCourse";
 import { TestAttemptResult } from "../../types/course.types";
 import { TestSection } from "../../api/testSection.api";
+import { mockTestApi } from "../../api/course.api";
 
 type OptionKey = "A" | "B" | "C" | "D";
 
-// Question Bank content embeds the passage/transcript directly inside each
-// question's text (e.g. "Reading Passage: \"...\"\n\n<question>"), a
-// convention built for the flat Practice page. When those same questions
-// get randomly pulled into a sectioned Mock Test, the section's own
-// dedicated passageText field is left empty — this extracts the passage
-// from the first question so it can still be shown once in the side
-// panel, and strips it from each individual question so it isn't repeated.
 function splitEmbeddedPassage(text: string): { passage: string | null; question: string } {
   const match = text.match(/^(?:Reading Passage|Listening Transcript):\s*"([\s\S]*?)"\s*\n\n([\s\S]*)$/);
   if (match) {
@@ -57,11 +58,134 @@ export function SectionedTestTakePage() {
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, OptionKey | null>>({});
+  const [flaggedQuestions, setFlaggedQuestions] = useState<Record<string, boolean>>({});
   const [essays, setEssays] = useState<Record<string, string>>({});
   const [writingSubmitted, setWritingSubmitted] = useState<Record<string, boolean>>({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState<TestAttemptResult | null>(null);
   const questionsPaneRef = useRef<HTMLDivElement>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const violationCountRef = useRef(0);
+
+  const handleFinish = useCallback(() => {
+    if (!attemptId) return;
+    const mcqAnswers = Object.entries(answers).map(([questionId, selectedOption]) => ({ questionId, selectedOption }));
+    submitAttempt.mutate(
+      { attemptId, answers: mcqAnswers },
+      {
+        onSuccess: (data) => {
+          setConfirmOpen(false);
+          setResult(data);
+        },
+      }
+    );
+  }, [attemptId, answers, submitAttempt]);
+
+  const takeProctoringSnapshot = useCallback(() => {
+    if (!attemptId || !videoRef.current) return;
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          mockTestApi.uploadProctoringSnapshot(attemptId, blob).catch(() => {});
+        }
+      },
+      "image/jpeg",
+      0.4
+    );
+  }, [attemptId]);
+
+  // Block Browser Back Button & Tab Close until test is submitted
+  useEffect(() => {
+    if (!attemptId || result) return;
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
+      alert("You cannot go back while a mock test is in progress. Please submit the test to finish.");
+    };
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [attemptId, result]);
+
+  // Camera Proctoring Setup
+  useEffect(() => {
+    if (result) return;
+    let stream: MediaStream | null = null;
+    navigator.mediaDevices
+      ?.getUserMedia({ video: true, audio: false })
+      .then((s) => {
+        stream = s;
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+        }
+      })
+      .catch(() => {});
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [result]);
+
+  // Periodic snapshot every 3 minutes
+  useEffect(() => {
+    if (!attemptId || result) return;
+    const interval = setInterval(takeProctoringSnapshot, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [attemptId, result, takeProctoringSnapshot]);
+
+  // Anti-Cheat Security: Tab switch (2-warning auto-submit), copy-paste block & right-click restriction
+  useEffect(() => {
+    if (!attemptId || result) return;
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        violationCountRef.current += 1;
+        mockTestApi.recordViolation(attemptId).catch(() => {});
+        takeProctoringSnapshot();
+        if (violationCountRef.current >= 2) {
+          alert("Test Terminated: You have exceeded the maximum number of warnings (2/2) for switching tabs or minimizing. Your test is being submitted automatically.");
+          handleFinish();
+        } else {
+          alert(`Security Warning (${violationCountRef.current}/2): Tab switching or minimizing is not allowed during the mock test! After 2 warnings, your test will automatically close.`);
+        }
+      }
+    };
+    const handleCopyPaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      alert("Copy/Paste is disabled during the exam.");
+    };
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("copy", handleCopyPaste);
+    document.addEventListener("paste", handleCopyPaste);
+    document.addEventListener("contextmenu", handleContextMenu);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("copy", handleCopyPaste);
+      document.removeEventListener("paste", handleCopyPaste);
+      document.removeEventListener("contextmenu", handleContextMenu);
+    };
+  }, [attemptId, result, handleFinish, takeProctoringSnapshot]);
 
   useEffect(() => {
     if (test?.durationMinutes && attemptId && !result) {
@@ -72,20 +196,12 @@ export function SectionedTestTakePage() {
   useEffect(() => {
     if (secondsLeft === null || result) return;
     if (secondsLeft <= 0) {
-      // Time's up — auto-submit whatever has been answered so far, just
-      // like a real exam ending the session at the bell.
-      if (attemptId) {
-        submitAttempt.mutate(
-          { attemptId, answers: Object.entries(answers).map(([questionId, selectedOption]) => ({ questionId, selectedOption })) },
-          { onSuccess: (data) => setResult(data) }
-        );
-      }
+      handleFinish();
       return;
     }
     const timer = setTimeout(() => setSecondsLeft((s) => (s !== null ? s - 1 : null)), 1000);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secondsLeft, result]);
+  }, [secondsLeft, result, handleFinish]);
 
   const formattedTimeLeft =
     secondsLeft !== null
@@ -103,8 +219,6 @@ export function SectionedTestTakePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [test]);
 
-  // Jumping between sections should feel like a fresh screen, not a
-  // continuation of wherever the reader last scrolled to.
   useEffect(() => {
     questionsPaneRef.current?.scrollTo({ top: 0 });
   }, [activeSectionIndex]);
@@ -131,9 +245,13 @@ export function SectionedTestTakePage() {
   const isLastSection = activeSectionIndex === effectiveSections.length - 1;
   const hasSidePanel = activeSection?.type === "READING" || activeSection?.type === "LISTENING";
 
-  // Fall back to extracting the passage/transcript from the first question
-  // when the section itself has no dedicated passageText set (see
-  // splitEmbeddedPassage comment above for why this happens).
+  const allMcqQuestions = effectiveSections.flatMap((s) => s.mockTestQuestions ?? []);
+  const totalCount = allMcqQuestions.length;
+  const answeredCount = allMcqQuestions.filter((q) => !!answers[q.questionId]).length;
+  const unansweredCount = totalCount - answeredCount;
+  const flaggedCount = allMcqQuestions.filter((q) => !!flaggedQuestions[q.questionId]).length;
+  const flaggedUnansweredCount = allMcqQuestions.filter((q) => !!flaggedQuestions[q.questionId] && !answers[q.questionId]).length;
+
   const derivedPassage =
     activeSection && !activeSection.passageText && activeSection.mockTestQuestions.length > 0
       ? splitEmbeddedPassage(activeSection.mockTestQuestions[0].question.question).passage
@@ -148,12 +266,6 @@ export function SectionedTestTakePage() {
     );
   };
 
-  const handleFinish = useCallback(() => {
-    if (!attemptId) return;
-    const mcqAnswers = Object.entries(answers).map(([questionId, selectedOption]) => ({ questionId, selectedOption }));
-    submitAttempt.mutate({ attemptId, answers: mcqAnswers }, { onSuccess: (data) => setResult(data) });
-  }, [attemptId, answers, submitAttempt]);
-
   if (isLoading || !test) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
@@ -164,7 +276,7 @@ export function SectionedTestTakePage() {
 
   if (result) {
     return (
-      <Box sx={{ maxWidth: 480, mx: "auto", textAlign: "center", mt: 6 }}>
+      <Box sx={{ maxWidth: 520, mx: "auto", textAlign: "center", mt: 6 }}>
         <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
           Test Submitted
         </Typography>
@@ -178,12 +290,17 @@ export function SectionedTestTakePage() {
             </Typography>
           )}
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-            Writing sections are graded manually — check back later for your band score.
+            You can view full question-by-question answers and explanations in your Progress & History page.
           </Typography>
         </Paper>
-        <Button variant="contained" onClick={() => navigate(`/courses/${courseId}`)}>
-          Back to Course
-        </Button>
+        <Box sx={{ display: "flex", gap: 1.5, justifyContent: "center" }}>
+          <Button variant="outlined" onClick={() => navigate("/progress")}>
+            Review Answers in History
+          </Button>
+          <Button variant="contained" onClick={() => navigate(`/courses/${courseId}`)}>
+            Back to Course
+          </Button>
+        </Box>
       </Box>
     );
   }
@@ -192,57 +309,74 @@ export function SectionedTestTakePage() {
 
   const renderQuestions = (compact: boolean) => (
     <Box sx={{ display: "flex", flexDirection: "column", gap: compact ? 2.5 : 3 }}>
-      {activeSection.mockTestQuestions.map((mq, qi) => (
-        <Box key={mq.questionId}>
-          <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
-            {qi + 1}. {splitEmbeddedPassage(mq.question.question).question}
-          </Typography>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {(["A", "B", "C", "D"] as OptionKey[]).map((key) => {
-              const optionText = mq.question[`option${key}` as "optionA"];
-              const isSelected = answers[mq.questionId] === key;
-              return (
-                <Box
-                  key={key}
-                  onClick={() => setAnswers((prev) => ({ ...prev, [mq.questionId]: key }))}
-                  sx={{
-                    p: 1.25,
-                    border: `1px solid ${isSelected ? "#2563EB" : "#E5E7EB"}`,
-                    bgcolor: isSelected ? "#EFF6FF" : "#fff",
-                    borderRadius: 1.5,
-                    cursor: "pointer",
-                    transition: "all 0.12s ease",
-                    "&:hover": { borderColor: "#93C5FD" },
-                  }}
-                >
-                  <Typography variant="body2">
-                    {key}. {optionText}
-                  </Typography>
-                </Box>
-              );
-            })}
+      {activeSection.mockTestQuestions.map((mq, qi) => {
+        const isFlg = !!flaggedQuestions[mq.questionId];
+        return (
+          <Box key={mq.questionId} id={`q-${mq.questionId}`}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1, mb: 1 }}>
+              <Typography variant="body1" fontWeight={600}>
+                {qi + 1}. {splitEmbeddedPassage(mq.question.question).question}
+              </Typography>
+              <Button
+                size="small"
+                variant={isFlg ? "contained" : "outlined"}
+                color="warning"
+                startIcon={isFlg ? <FlagIcon /> : <OutlinedFlagIcon />}
+                onClick={() => setFlaggedQuestions((prev) => ({ ...prev, [mq.questionId]: !prev[mq.questionId] }))}
+                sx={{ flexShrink: 0, textTransform: "none", fontSize: 11, py: 0.25 }}
+              >
+                {isFlg ? "Flagged" : "Flag"}
+              </Button>
+            </Box>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {(["A", "B", "C", "D"] as OptionKey[]).map((key) => {
+                const optionText = mq.question[`option${key}` as "optionA"];
+                if (!optionText) return null;
+                const isSelected = answers[mq.questionId] === key;
+                return (
+                  <Box
+                    key={key}
+                    onClick={() => setAnswers((prev) => ({ ...prev, [mq.questionId]: key }))}
+                    sx={{
+                      p: 1.25,
+                      border: `1px solid ${isSelected ? "#2563EB" : "#E5E7EB"}`,
+                      bgcolor: isSelected ? "#EFF6FF" : "#fff",
+                      borderRadius: 1.5,
+                      cursor: "pointer",
+                      transition: "all 0.12s ease",
+                      "&:hover": { borderColor: "#93C5FD" },
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {key}. {optionText}
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Box>
           </Box>
-        </Box>
-      ))}
+        );
+      })}
     </Box>
   );
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "calc(100vh - 96px)" }}>
-      {/* Section tabs — each tab is a distinct "part" of the exam, matching
-          the real IELTS computer-delivered structure (separate timed
-          sections, not one long scroll). */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, flexWrap: "wrap" }}>
-        <Typography variant="h6" fontWeight={700} sx={{ mr: 2 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "calc(100vh - 96px)", userSelect: "none" }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5, flexWrap: "wrap" }}>
+        <Typography variant="h6" fontWeight={700} sx={{ mr: 1 }}>
           {test.title}
         </Typography>
         {formattedTimeLeft && (
           <Chip
             label={`⏱ ${formattedTimeLeft}`}
             color={secondsLeft !== null && secondsLeft < 300 ? "error" : "default"}
-            sx={{ mr: 2, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}
+            sx={{ mr: 1, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}
           />
         )}
+        <Chip size="small" label={`Answered: ${answeredCount}/${totalCount}`} color="primary" variant="outlined" />
+        <Chip size="small" label={`Skipped: ${unansweredCount}`} variant="outlined" />
+        <Chip size="small" label={`Flagged: ${flaggedCount}`} color={flaggedCount > 0 ? "warning" : "default"} variant={flaggedCount > 0 ? "filled" : "outlined"} />
+        <Box sx={{ flex: 1 }} />
         {effectiveSections.map((s, i) => {
           const meta = sectionMeta[s.type] ?? sectionMeta.MCQ;
           const isDone = s.type === "WRITING" ? writingSubmitted[s.id] : s.mockTestQuestions.every((q) => answers[q.questionId]);
@@ -260,11 +394,38 @@ export function SectionedTestTakePage() {
         })}
       </Box>
 
-      {/* Split-screen for Reading/Listening: reference material stays fixed
-          on the left while questions scroll independently on the right —
-          this is the layout every real computer-based exam uses, since
-          re-reading the passage while answering shouldn't cost your place
-          in the question list. */}
+      {/* Quick question status bar for current section */}
+      {activeSection.mockTestQuestions.length > 0 && (
+        <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", mb: 1.5 }}>
+          {activeSection.mockTestQuestions.map((mq, qi) => {
+            const isAns = !!answers[mq.questionId];
+            const isFlg = !!flaggedQuestions[mq.questionId];
+            return (
+              <Box
+                key={mq.questionId}
+                onClick={() => document.getElementById(`q-${mq.questionId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: isFlg ? "2px solid #D97706" : isAns ? "1px solid #2563EB" : "1px solid #E5E7EB",
+                  bgcolor: isFlg ? "#FEF3C7" : isAns ? "#EFF6FF" : "#fff",
+                  color: isFlg ? "#B45309" : isAns ? "primary.main" : "text.secondary",
+                }}
+              >
+                {qi + 1}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
       {hasSidePanel ? (
         <Box sx={{ display: "flex", gap: 2, flex: 1, minHeight: 0 }}>
           <Paper
@@ -278,12 +439,7 @@ export function SectionedTestTakePage() {
               bgcolor: "#FAFBFC",
             }}
           >
-            <Chip
-              size="small"
-              icon={sectionMeta[activeSection.type].icon}
-              label={sectionMeta[activeSection.type].label}
-              sx={{ mb: 2 }}
-            />
+            <Chip size="small" icon={sectionMeta[activeSection.type].icon} label={sectionMeta[activeSection.type].label} sx={{ mb: 2 }} />
             {activeSection.type === "READING" && displayPassageText && (
               <Typography variant="body1" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.9 }}>
                 {displayPassageText}
@@ -310,7 +466,7 @@ export function SectionedTestTakePage() {
           <Paper elevation={0} sx={{ p: 3, border: "1px solid #E5E7EB", borderRadius: 3, maxWidth: 800 }}>
             <Chip size="small" icon={sectionMeta[activeSection.type].icon} label={sectionMeta[activeSection.type].label} sx={{ mb: 2 }} />
 
-            {(activeSection.type === "MCQ") && renderQuestions(false)}
+            {activeSection.type === "MCQ" && renderQuestions(false)}
 
             {activeSection.type === "WRITING" && (
               <Box>
@@ -362,15 +518,6 @@ export function SectionedTestTakePage() {
                     No topic set for this Speaking part yet.
                   </Typography>
                 )}
-                {activeSection.timeLimitMinutes && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-                    Suggested time: {activeSection.timeLimitMinutes} minute{activeSection.timeLimitMinutes !== 1 ? "s" : ""}
-                  </Typography>
-                )}
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-                  Speaking is assessed live — practice this topic out loud, or check the course page for a scheduled
-                  Speaking session with an instructor.
-                </Typography>
               </Box>
             )}
           </Paper>
@@ -379,8 +526,6 @@ export function SectionedTestTakePage() {
 
       <Divider sx={{ my: 2 }} />
 
-      {/* Footer nav — "Next Part" moves through the exam's timed sections
-          one at a time; the final section surfaces "Finish Test" instead. */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Button disabled={activeSectionIndex === 0} onClick={() => setActiveSectionIndex((i) => i - 1)}>
           Previous Part
@@ -392,10 +537,61 @@ export function SectionedTestTakePage() {
             </Button>
           </Tooltip>
         ) : (
-          <Button variant="contained" color="secondary" onClick={handleFinish} disabled={submitAttempt.isPending}>
+          <Button variant="contained" color="secondary" onClick={() => setConfirmOpen(true)} disabled={submitAttempt.isPending}>
             {submitAttempt.isPending ? "Submitting..." : "Finish Test"}
           </Button>
         )}
+      </Box>
+
+      {/* Pre-Submit Summary Dialog */}
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle fontWeight={700}>Exam Summary Before Submit</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, my: 1 }}>
+            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center" }}>
+              <Typography variant="h6" fontWeight={800}>{totalCount}</Typography>
+              <Typography variant="caption" color="text.secondary">Total Questions</Typography>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center", bgcolor: "#EFF6FF", borderColor: "#93C5FD" }}>
+              <Typography variant="h6" fontWeight={800} color="primary.main">{answeredCount}</Typography>
+              <Typography variant="caption" color="text.secondary">Attempted</Typography>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center", bgcolor: "#FEF2F2", borderColor: "#FECACA" }}>
+              <Typography variant="h6" fontWeight={800} color="error.main">{unansweredCount}</Typography>
+              <Typography variant="caption" color="text.secondary">Unanswered / Skipped</Typography>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center", bgcolor: "#FEF3C7", borderColor: "#FDE68A" }}>
+              <Typography variant="h6" fontWeight={800} sx={{ color: "#B45309" }}>{flaggedCount}</Typography>
+              <Typography variant="caption" color="text.secondary">Flagged for Review</Typography>
+            </Paper>
+          </Box>
+
+          {flaggedCount > 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              You have <b>{flaggedCount} flagged question(s)</b>
+              {flaggedUnansweredCount > 0 ? ` (${flaggedUnansweredCount} still unanswered!)` : "."}
+            </Alert>
+          )}
+          {unansweredCount > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              You still have <b>{unansweredCount}</b> unanswered question(s). Once submitted, you cannot return to this test.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmOpen(false)}>Review Questions</Button>
+          <Button variant="contained" color="primary" onClick={handleFinish} disabled={submitAttempt.isPending}>
+            {submitAttempt.isPending ? "Submitting..." : "Confirm & Submit"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Floating Webcam Proctoring Feed */}
+      <Box sx={{ position: "fixed", bottom: 84, right: 20, width: 130, height: 98, bgcolor: "black", borderRadius: 2, overflow: "hidden", border: "2px solid #1976d2", zIndex: 1300, boxShadow: 3, pointerEvents: "none", opacity: 0.92 }}>
+        <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: 105, objectFit: "cover" }} />
+        <Typography variant="caption" sx={{ position: "absolute", bottom: 2, left: 4, color: "white", bgcolor: "rgba(0,0,0,0.6)", px: 0.5, borderRadius: 1, fontSize: "10px" }}>
+          Proctored
+        </Typography>
       </Box>
     </Box>
   );

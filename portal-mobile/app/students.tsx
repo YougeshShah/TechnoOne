@@ -45,7 +45,9 @@ export default function StudentsScreen() {
           <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Students</Text>
-        <View style={{ width: 22 }} />
+        <TouchableOpacity onPress={() => router.push("/flagged-attempts" as any)} style={{ backgroundColor: "#FEF2F2", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: "#FECACA" }}>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: "#DC2626" }}>⚠️ Flagged Exams</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.tabRow}>

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCases, useTodayHearings, useUpcomingHearings } from "../../src/hooks/useDomainData";
 import { institutionStudentApi } from "../../src/api/institutionStudent.api";
 import { liveClassApi } from "../../src/api/liveClass.api";
+import { proctoringReviewApi } from "../../src/api/proctoringReview.api";
 import { useTranslation } from "../../src/i18n/LanguageContext";
 import { useAuthStore } from "../../src/store/authStore";
 import { Card } from "../../src/components/Card";
@@ -36,6 +37,7 @@ function InstitutionDashboard() {
     queryFn: () => institutionStudentApi.list("PENDING_VERIFICATION"),
   });
   const { data: liveClasses } = useQuery({ queryKey: ["dash-live-classes"], queryFn: () => liveClassApi.myClasses() });
+  const { data: flaggedAttempts } = useQuery({ queryKey: ["mobile-flagged-attempts"], queryFn: () => proctoringReviewApi.listFlaggedAttempts() });
 
   const todayClasses = (liveClasses ?? []).filter((c) => {
     const d = new Date(c.scheduledAt);
@@ -79,6 +81,21 @@ function InstitutionDashboard() {
           </Card>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity onPress={() => router.push("/flagged-attempts" as any)} style={{ marginBottom: spacing.md }}>
+        <Card style={{ borderColor: (flaggedAttempts?.length ?? 0) > 0 ? "#FECACA" : "#E5E7EB", borderWidth: 1, backgroundColor: (flaggedAttempts?.length ?? 0) > 0 ? "#FEF2F2" : "#fff" }}>
+          <View style={styles.hearingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.hearingTitle, { color: (flaggedAttempts?.length ?? 0) > 0 ? "#DC2626" : colors.textPrimary }]}>
+                ⚠️ Flagged Mock Test Attempts ({flaggedAttempts?.length ?? 0})
+              </Text>
+              <Text style={styles.hearingSub}>
+                Tap to inspect proctoring camera snapshots & approve or disqualify
+              </Text>
+            </View>
+          </View>
+        </Card>
+      </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>Today's Live Classes</Text>
       {todayClasses.length === 0 && (

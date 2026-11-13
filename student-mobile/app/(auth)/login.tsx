@@ -56,7 +56,6 @@ export default function LoginScreen() {
         <Text style={styles.linkBold}>Forgot password?</Text>
       </Link>
 
-      <Link href="/(auth)/register" style={styles.link}>
         <Text>
           New here? <Text style={styles.linkBold}>Create an account</Text>
         </Text>

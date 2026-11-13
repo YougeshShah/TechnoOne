@@ -61,6 +61,17 @@ export interface TestAttemptStart {
   durationMinutes: number;
 }
 
+export interface TestSectionResult {
+  sectionId: string;
+  title: string;
+  type: "MCQ" | "READING" | "LISTENING" | "WRITING" | "SPEAKING";
+  correct?: number;
+  total?: number;
+  band?: number | null;
+  feedback?: string | null;
+  status?: "NOT_SUBMITTED" | "PENDING" | "GRADED" | "NOT_AVAILABLE";
+}
+
 export interface TestAttemptResult {
   score: number;
   totalQuestions: number;
@@ -69,4 +80,6 @@ export interface TestAttemptResult {
   totalMarks?: number;
   negativeMarkingApplied?: boolean;
   submittedAt: string;
+  sections?: TestSectionResult[];
+  overallBand?: number | null;
 }

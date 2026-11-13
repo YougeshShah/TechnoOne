@@ -38,26 +38,65 @@ export const speakingService = {
     file: Express.Multer.File,
     studentLawFirmId: string | null
   ) {
-    const prompt = await prisma.speakingPrompt.findUnique({ where: { id: input.promptId } });
-    if (!prompt) throw AppError.notFound("Prompt not found");
+    let promptText: string;
+    let part: number;
+    let courseId: string;
+    const createData: any = {
+      studentId,
+      recordingType: input.recordingType,
+      durationSeconds: input.durationSeconds,
+    };
 
-    await usageLimitService.enforce(studentId, prompt.courseId, studentLawFirmId, "speaking");
+    if (input.promptId) {
+      const prompt = await prisma.speakingPrompt.findUnique({ where: { id: input.promptId } });
+      if (!prompt) throw AppError.notFound("Prompt not found");
+      promptText = prompt.promptText;
+      part = prompt.part;
+      courseId = prompt.courseId;
+      createData.promptId = input.promptId;
+    } else {
+      // Mock-test-embedded Speaking section -- no SpeakingPrompt row exists;
+      // the topic text lives directly on TestSection.writingPrompt.
+      const attempt = await prisma.testAttempt.findUnique({ where: { id: input.attemptId! }, include: { mockTest: true } });
+      if (!attempt) throw AppError.notFound("Test attempt not found");
+      if (attempt.studentId !== studentId) throw AppError.forbidden("This is not your attempt");
+      if (attempt.submittedAt) throw AppError.badRequest("This attempt has already been submitted");
+
+      const section = await prisma.testSection.findUnique({ where: { id: input.sectionId! } });
+      if (!section || section.mockTestId !== attempt.mockTestId) throw AppError.notFound("Speaking section not found");
+
+      promptText = section.writingPrompt ?? "Speak about the topic shown on screen.";
+      // Mock-test Speaking sections don't carry an explicit IELTS Part
+      // number -- best-effort parse it from the section title (e.g.
+      // "Speaking Part 2"), defaulting to Part 1 if not present.
+      const partMatch = section.title.match(/part\s*(\d)/i);
+      part = partMatch ? Number(partMatch[1]) : 1;
+      courseId = (attempt.mockTest as any).courseId;
+      createData.attemptId = input.attemptId;
+      createData.sectionId = input.sectionId;
+    }
+
+    await usageLimitService.enforce(studentId, courseId, studentLawFirmId, "speaking");
 
     // Stored as a relative path (lawFirmId-less, since this sits under
     // uploads/speaking/ directly) -- streamed back later via the
     // authenticated recording endpoint, never served as a public static URL,
     // since these are personal recordings, not low-sensitivity assets like avatars.
     const relativePath = path.join("speaking", file.filename);
+    createData.recordingUrl = relativePath;
 
-    const created = await prisma.speakingSubmission.create({
-      data: {
-        studentId,
-        promptId: input.promptId,
-        recordingUrl: relativePath,
-        recordingType: input.recordingType,
-        durationSeconds: input.durationSeconds,
-      },
-    });
+    // Re-recording the same Mock Test Speaking section overwrites the prior
+    // attempt at it (upsert on the attemptId+sectionId unique pair) rather
+    // than piling up duplicate rows -- a dedicated-prompt submission always
+    // just creates a new row, matching the existing behavior there.
+    const created =
+      input.attemptId && input.sectionId
+        ? await prisma.speakingSubmission.upsert({
+            where: { attemptId_sectionId: { attemptId: input.attemptId, sectionId: input.sectionId } },
+            create: createData,
+            update: createData,
+          })
+        : await prisma.speakingSubmission.create({ data: createData });
 
     // AI-grade immediately (Gemini transcribes + scores the audio/video in
     // one call, IELTS Speaking band descriptors) so the student sees their
@@ -67,8 +106,8 @@ export const speakingService = {
     const result = await gradeSpeakingRecording({
       absoluteFilePath,
       mimeType: file.mimetype,
-      promptText: prompt.promptText,
-      part: prompt.part,
+      promptText,
+      part,
     });
 
     if (result) {

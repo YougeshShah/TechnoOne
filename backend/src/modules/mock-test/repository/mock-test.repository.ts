@@ -111,6 +111,14 @@ export const mockTestRepository = {
     });
   },
 
+  findWritingSubmissionsByAttempt(attemptId: string) {
+    return prisma.writingSubmission.findMany({ where: { attemptId } });
+  },
+
+  findSpeakingSubmissionsByAttempt(attemptId: string) {
+    return prisma.speakingSubmission.findMany({ where: { attemptId } });
+  },
+
   saveAnswers(attemptId: string, answers: { questionId: string; selectedOption: string | null; isCorrect: boolean | null }[]) {
     return prisma.testAnswer.createMany({
       data: answers.map((a) => ({ attemptId, ...a })),
@@ -138,7 +146,7 @@ export const mockTestRepository = {
   // signal for a future staff review queue, without needing to watch every
   // single attempt.
   async recordViolation(attemptId: string) {
-    const APP_LEFT_FLAG_THRESHOLD = 3;
+    const APP_LEFT_FLAG_THRESHOLD = 2;
     const attempt = await prisma.testAttempt.update({
       where: { id: attemptId },
       data: { appLeftCount: { increment: 1 } },
@@ -156,6 +164,32 @@ export const mockTestRepository = {
     return prisma.testAttempt.update({
       where: { id: attemptId },
       data: { proctoringSnapshotUrls: [] },
+    });
+  },
+
+  findFlaggedAttempts(params: { hostLawFirmId?: string; mockTestId?: string }) {
+    return prisma.testAttempt.findMany({
+      where: {
+        flagged: true,
+        ...(params.mockTestId ? { mockTestId: params.mockTestId } : {}),
+        ...(params.hostLawFirmId ? { mockTest: { hostLawFirmId: params.hostLawFirmId } } : {}),
+      },
+      include: {
+        student: { select: { id: true, fullName: true, email: true } },
+        mockTest: { select: { id: true, title: true, courseId: true, hostLawFirmId: true } },
+      },
+      orderBy: { startedAt: "desc" },
+    });
+  },
+
+  resolveFlaggedAttempt(attemptId: string, action: "APPROVE" | "DISQUALIFY") {
+    return prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: {
+        flagged: false,
+        proctoringSnapshotUrls: [],
+        ...(action === "DISQUALIFY" ? { score: 0 } : {}),
+      },
     });
   },
 };

@@ -79,4 +79,54 @@ router.get("/analytics", async (req: Request, res: Response) => {
   });
 });
 
+
+// Date-wise MCQ Practice history with full question details, student choice, and explanation
+router.get("/practice-history", async (req: Request, res: Response) => {
+  if (!req.auth) throw AppError.unauthorized();
+  const studentId = req.auth.userId;
+
+  const attempts = await prisma.mcqPracticeAttempt.findMany({
+    where: { studentId },
+    orderBy: { answeredAt: "desc" },
+  });
+
+  const questionIds = Array.from(new Set(attempts.map((a) => a.questionId)));
+  const questions = await prisma.mcqQuestion.findMany({
+    where: { id: { in: questionIds } },
+    include: { subject: true, course: true },
+  });
+  const questionMap = new Map(questions.map((q) => [q.id, q]));
+
+  const enriched = attempts
+    .map((a) => {
+      const q = questionMap.get(a.questionId);
+      if (!q) return null;
+      return {
+        id: a.id,
+        questionId: a.questionId,
+        selectedOption: a.selectedOption,
+        isCorrect: a.isCorrect,
+        answeredAt: a.answeredAt,
+        dateKey: a.answeredAt.toISOString().slice(0, 10),
+        question: {
+          id: q.id,
+          question: q.question,
+          answerType: (q as any).answerType ?? "MCQ",
+          optionA: q.optionA,
+          optionB: q.optionB,
+          optionC: q.optionC,
+          optionD: q.optionD,
+          correctOption: q.correctOption,
+          correctAnswerText: (q as any).correctAnswerText ?? null,
+          explanation: q.explanation,
+          subjectName: (q as any).subject?.name ?? null,
+          courseName: (q as any).course?.name ?? null,
+        },
+      };
+    })
+    .filter(Boolean);
+
+  res.status(200).json({ success: true, data: enriched });
+});
+
 export default router;

@@ -20,10 +20,34 @@ function clampBand(n: any): number {
   return Math.max(0, Math.min(9, num));
 }
 
+const WRITING_SYSTEM_PROMPT =
+  "You are an official IELTS Writing examiner. Grade the student's essay strictly using the real IELTS " +
+  "Writing band descriptors (Task Achievement/Response, Coherence and Cohesion, Lexical Resource, " +
+  "Grammatical Range and Accuracy). Give an overall band score from 0 to 9 in 0.5 increments, and concise, " +
+  "actionable feedback (3-5 sentences) explaining the score and specific ways to improve. " +
+  'Respond with ONLY a JSON object, no markdown, no code fences, in exactly this shape: ' +
+  '{"score": <number>, "feedback": "<string>"}';
+
+function buildWritingUserPrompt(params: {
+  writingPrompt: string;
+  minWordCount: number | null;
+  wordCount: number;
+  essayText: string;
+}): string {
+  const { writingPrompt, minWordCount, wordCount, essayText } = params;
+  return (
+    `Writing task prompt: ${writingPrompt}\n` +
+    (minWordCount ? `Minimum word count: ${minWordCount}\n` : "") +
+    `Student's word count: ${wordCount}\n\nStudent's essay:\n${essayText}`
+  );
+}
+
 /**
- * Grades an IELTS Writing task essay instantly using Claude, following the
- * official band descriptors (Task Achievement, Coherence & Cohesion,
- * Lexical Resource, Grammatical Range & Accuracy). Returns null on any
+ * Grades an IELTS Writing task essay instantly using Gemini's free-tier
+ * text API, following the official band descriptors (Task Achievement,
+ * Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy).
+ * Reuses the same GEMINI_API_KEY already configured for Speaking grading
+ * and the chatbot -- no new key/billing needed. Returns null on any
  * failure so the caller can fall back to the existing manual-review queue.
  */
 export async function gradeWritingEssay(params: {
@@ -32,28 +56,60 @@ export async function gradeWritingEssay(params: {
   wordCount: number;
   essayText: string;
 }): Promise<{ score: number; feedback: string } | null> {
+  if (!env.gemini.apiKey) return null;
+
+  const prompt = `${WRITING_SYSTEM_PROMPT}\n\n${buildWritingUserPrompt(params)}`;
+
+  const maxAttempts = 2;
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${env.gemini.apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    if (response.ok) break;
+    const errText = await response.text();
+    const overloaded = response.status === 503 || errText.includes("overloaded") || errText.includes("UNAVAILABLE");
+    if (!overloaded || attempt === maxAttempts) break;
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+  }
+
+  if (!response || !response.ok) return null;
+
+  try {
+    const data = (await response.json()) as any;
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const parsed = JSON.parse(stripCodeFence(raw));
+    if (typeof parsed.feedback !== "string") return null;
+    return { score: clampBand(parsed.score), feedback: parsed.feedback };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Same as gradeWritingEssay but via Claude (Anthropic). Kept but unused --
+ * switch gradeWritingEssay's callers to this if you ever add Anthropic
+ * billing credits and want Claude's grading instead of Gemini's.
+ */
+export async function gradeWritingEssayClaude(params: {
+  writingPrompt: string;
+  minWordCount: number | null;
+  wordCount: number;
+  essayText: string;
+}): Promise<{ score: number; feedback: string } | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  const { writingPrompt, minWordCount, wordCount, essayText } = params;
-
-  const systemPrompt =
-    "You are an official IELTS Writing examiner. Grade the student's essay strictly using the real IELTS " +
-    "Writing band descriptors (Task Achievement/Response, Coherence and Cohesion, Lexical Resource, " +
-    "Grammatical Range and Accuracy). Give an overall band score from 0 to 9 in 0.5 increments, and concise, " +
-    "actionable feedback (3-5 sentences) explaining the score and specific ways to improve. " +
-    'Respond with ONLY a JSON object, no markdown, no code fences, in exactly this shape: ' +
-    '{"score": <number>, "feedback": "<string>"}';
-
-  const userPrompt =
-    `Writing task prompt: ${writingPrompt}\n` +
-    (minWordCount ? `Minimum word count: ${minWordCount}\n` : "") +
-    `Student's word count: ${wordCount}\n\nStudent's essay:\n${essayText}`;
 
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 600,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
+      system: WRITING_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildWritingUserPrompt(params) }],
     });
     const textBlock = response.content.find((b) => b.type === "text");
     const raw = textBlock && "text" in textBlock ? textBlock.text : "";

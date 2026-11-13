@@ -26,6 +26,7 @@ export function SpeakingTestPage() {
   const [phase, setPhase] = useState<Phase>("ready");
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [speakingResult, setSpeakingResult] = useState<import("../../api/speaking.api").SpeakingSubmission | null>(null);
 
   const submitMutation = useMutation({
     mutationFn: ({ blob, duration }: { blob: Blob; duration: number }) =>
@@ -51,7 +52,8 @@ export function SpeakingTestPage() {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       setPhase("uploading");
       try {
-        await submitMutation.mutateAsync({ blob, duration: recordSecondsRef.current });
+        const submitted = await submitMutation.mutateAsync({ blob, duration: recordSecondsRef.current });
+        setSpeakingResult(submitted);
         setPhase("done");
       } catch {
         setErrorMsg("Could not submit your recording. Please try again.");
@@ -181,7 +183,11 @@ export function SpeakingTestPage() {
 
       {phase === "done" && (
         <Alert severity="success">
-          Recording submitted successfully. It's currently pending grading.
+          {speakingResult?.status === "GRADED" && speakingResult.overallBand != null ? (
+            <>Your Speaking band score: <strong>{speakingResult.overallBand}</strong></>
+          ) : (
+            "Recording submitted successfully. It's currently pending grading."
+          )}
           <Button sx={{ ml: 2 }} size="small" onClick={() => navigate(-1)}>
             Back
           </Button>

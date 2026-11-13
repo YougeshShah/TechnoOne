@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking, AppState, AppStateStatus } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking, AppState, AppStateStatus, BackHandler, Modal } from "react-native";
+import { useNavigation } from "expo-router";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -68,7 +69,10 @@ export default function MockTestScreen() {
 
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const navigation = useNavigation();
   const [answers, setAnswers] = useState<Record<string, string | null>>({});
+  const [flaggedQuestions, setFlaggedQuestions] = useState<Record<string, boolean>>({});
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [essays, setEssays] = useState<Record<string, string>>({});
   const [index, setIndex] = useState(0);
   const [result, setResult] = useState<{
@@ -88,6 +92,7 @@ export default function MockTestScreen() {
   usePreventScreenCapture();
   const [proctoringCameraPermission, requestProctoringCameraPermission] = useCameraPermissions();
   const proctorCameraRef = useRef<CameraView>(null);
+  const violationCountRef = useRef(0);
   const [writingScores, setWritingScores] = useState<
     { sectionTitle: string; score: number | null; feedback: string | null }[]
   >([]);
@@ -125,19 +130,25 @@ export default function MockTestScreen() {
   // another app/tab, locking the phone) -- each one is logged as a
   // violation server-side, and the attempt gets auto-flagged for staff
   // review after 3 of them. Also grabs an extra snapshot on return.
+
+
+  // Lock Back Navigation until test is submitted
   useEffect(() => {
     if (!attemptId || result) return;
-    let lastState: AppStateStatus = AppState.currentState;
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (lastState === "active" && nextState !== "active") {
-        mockTestApi.recordViolation(attemptId).catch(() => {});
-      } else if (lastState !== "active" && nextState === "active") {
-        takeProctoringSnapshot();
-      }
-      lastState = nextState;
+    const backSub = BackHandler.addEventListener("hardwareBackPress", () => {
+      Alert.alert("Exam in Progress", "You cannot leave the mock test until you submit it.");
+      return true;
     });
-    return () => sub.remove();
-  }, [attemptId, result, takeProctoringSnapshot]);
+    const navSub = navigation.addListener("beforeRemove", (e: any) => {
+      if (result) return;
+      e.preventDefault();
+      Alert.alert("Exam in Progress", "You cannot go back while a mock test is running. Please submit the test first.");
+    });
+    return () => {
+      backSub.remove();
+      navSub();
+    };
+  }, [attemptId, result, navigation]);
 
   const steps = useMemo(() => (test ? buildSteps(test) : []), [test]);
 
@@ -180,6 +191,33 @@ export default function MockTestScreen() {
         submitAttempt.mutate({ attemptId, answers: answerList }, { onSuccess: (data) => setResult(data) });
       });
   }, [attemptId, answers, essays, steps]);
+
+  useEffect(() => {
+    if (!attemptId || result) return;
+    let lastState: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (lastState === "active" && nextState !== "active") {
+        violationCountRef.current += 1;
+        mockTestApi.recordViolation(attemptId).catch(() => {});
+      } else if (lastState !== "active" && nextState === "active") {
+        takeProctoringSnapshot();
+        if (violationCountRef.current >= 2) {
+          Alert.alert(
+            "Test Terminated",
+            "You have exceeded the maximum number of warnings (2/2) for leaving the test. Your test is being submitted automatically."
+          );
+          handleSubmit();
+        } else {
+          Alert.alert(
+            `Security Warning (${violationCountRef.current}/2)`,
+            "Warning: Minimizing or switching apps is not allowed during the mock test! After 2 warnings, your test will automatically close."
+          );
+        }
+      }
+      lastState = nextState;
+    });
+    return () => sub.remove();
+  }, [attemptId, result, takeProctoringSnapshot, handleSubmit]);
 
   useEffect(() => {
     if (secondsLeft === null || result) return;
@@ -256,7 +294,12 @@ export default function MockTestScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
       {proctoringCameraPermission?.granted && (
-        <CameraView ref={proctorCameraRef} style={styles.hiddenCamera} facing="front" />
+        <View style={styles.floatingCameraContainer} pointerEvents="none">
+          <CameraView ref={proctorCameraRef} style={styles.floatingCamera} facing="front" />
+          <View style={styles.proctoredBadge}>
+            <Text style={styles.proctoredBadgeText}>Proctored</Text>
+          </View>
+        </View>
       )}
       <View style={[styles.timerBar, isLowTime && { backgroundColor: "#FEF2F2" }]}>
         <Text style={styles.timerText}>
@@ -284,6 +327,21 @@ export default function MockTestScreen() {
                 <Text style={styles.audioBarText}>🔊 Play Audio</Text>
               </TouchableOpacity>
             )}
+            {step?.kind === "question" && (
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#6B7280" }}>
+                  Answered: {steps.filter((s): s is Extract<Step, { kind: "question" }> => s.kind === "question" && !!answers[s.questionId]).length} / {steps.filter((s) => s.kind === "question").length} • Flagged: {Object.values(flaggedQuestions).filter(Boolean).length}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setFlaggedQuestions((prev) => ({ ...prev, [step.questionId]: !prev[step.questionId] }))}
+                  style={{ backgroundColor: flaggedQuestions[step.questionId] ? "#FEF3C7" : "#F3F4F6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: flaggedQuestions[step.questionId] ? "#D97706" : "#E5E7EB" }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: flaggedQuestions[step.questionId] ? "#B45309" : "#374151" }}>
+                    {flaggedQuestions[step.questionId] ? "🚩 Flagged" : "🏳️ Flag for Review"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <Text style={styles.questionText}>
               {isMultiBlankQuestion
                 ? multiBlankSegments.map((seg: string) => (/^\{\{\d+\}\}$/.test(seg) ? `[__${seg.replace(/\D/g, "")}__]` : seg)).join("")
@@ -296,6 +354,7 @@ export default function MockTestScreen() {
                   <View key={i} style={{ marginBottom: 8 }}>
                     <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>Blank {i + 1}</Text>
                     <TextInput
+                      contextMenuHidden={true}
                       style={styles.textInput}
                       placeholder="Your answer..."
                       value={currentMultiBlankAnswers[i] ?? ""}
@@ -311,6 +370,7 @@ export default function MockTestScreen() {
               </View>
             ) : isFreeTextQuestion ? (
               <TextInput
+                      contextMenuHidden={true}
                 style={styles.textInput}
                 placeholder="Type your answer..."
                 value={answers[step.questionId] ?? ""}
@@ -346,6 +406,7 @@ export default function MockTestScreen() {
               </Text>
             )}
             <TextInput
+                      contextMenuHidden={true}
               style={styles.essayInput}
               multiline
               textAlignVertical="top"
@@ -385,12 +446,22 @@ export default function MockTestScreen() {
         ) : (
           <TouchableOpacity
             style={[styles.primaryButtonSmall, { backgroundColor: "#F59E0B" }]}
-            onPress={() =>
-              Alert.alert("Submit Test?", "This can't be undone.", [
-                { text: "Cancel", style: "cancel" },
-                { text: "Submit", onPress: handleSubmit },
-              ])
-            }
+            onPress={() => {
+              const qSteps = steps.filter((s): s is Extract<Step, { kind: "question" }> => s.kind === "question");
+              const totalQ = qSteps.length;
+              const attemptedQ = qSteps.filter((s) => !!answers[s.questionId]).length;
+              const skippedQ = totalQ - attemptedQ;
+              const flaggedQ = qSteps.filter((s) => !!flaggedQuestions[s.questionId]).length;
+              const flaggedUnanswered = qSteps.filter((s) => !!flaggedQuestions[s.questionId] && !answers[s.questionId]).length;
+              Alert.alert(
+                "Exam Summary Before Submit",
+                `Total Questions: ${totalQ}\nAttempted: ${attemptedQ}\nUnanswered / Skipped: ${skippedQ}\nFlagged for Review: ${flaggedQ}${flaggedUnanswered > 0 ? ` (${flaggedUnanswered} flagged still unanswered!)` : ""}\n\nAre you sure you want to submit?`,
+                [
+                  { text: "Review Questions", style: "cancel" },
+                  { text: "Confirm & Submit", onPress: handleSubmit },
+                ]
+              );
+            }}
           >
             <Text style={styles.primaryButtonText}>Submit</Text>
           </TouchableOpacity>
@@ -403,6 +474,10 @@ export default function MockTestScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   hiddenCamera: { position: "absolute", width: 1, height: 1, opacity: 0 },
+  floatingCameraContainer: { position: "absolute", bottom: 80, right: 16, width: 110, height: 85, borderRadius: 10, overflow: "hidden", borderWidth: 2, borderColor: "#2563EB", backgroundColor: "#000", zIndex: 999, elevation: 6 },
+  floatingCamera: { width: "100%", height: "100%" },
+  proctoredBadge: { position: "absolute", bottom: 2, left: 4, backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  proctoredBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
   timerBar: { flexDirection: "row", justifyContent: "space-between", padding: 14, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
   timerText: { fontWeight: "700", fontSize: 14, flexShrink: 1 },
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#E5E7EB" },

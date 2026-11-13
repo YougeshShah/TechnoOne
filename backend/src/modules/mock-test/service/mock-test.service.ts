@@ -8,11 +8,83 @@ import { mcqRepository } from "../../mcq/repository/mcq.repository";
 import { courseService } from "../../course/service/course.service";
 import { lawFirmRepository } from "../../lawfirm/repository/lawfirm.repository";
 import { CreateMockTestInput, ListMockTestsQuery, SubmitAttemptInput } from "../dto/mock-test.dto";
+import { rawScoreToBand } from "../utils/band-conversion";
 
 // Same normalization used in mcq.service.ts for Fill Blank / Short Answer
 // grading — case-insensitive, whitespace-trimmed comparison.
 function normalizeAnswerText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Builds the per-section IELTS-style breakdown (Reading/Listening bands via
+// the real conversion table, Writing bands from whatever's already been
+// graded for this attempt, Speaking marked not-yet-available) plus one
+// combined overall band -- the average of whichever section bands exist,
+// rounded to the nearest 0.5, matching how the real IELTS overall band is
+// calculated from the four skill bands.
+function buildSectionBreakdown(
+  test: any,
+  gradedAnswers: { questionId: string; selectedOption: string | null; isCorrect: boolean | null }[],
+  writingSubmissions: { sectionId: string; score: number | null; feedback: string | null }[],
+  speakingSubmissions: { sectionId: string | null; overallBand: number | null; aiFeedback: string | null; status: string }[] = []
+) {
+  const sections = (test?.sections ?? []) as any[];
+  if (sections.length === 0) return { sections: [] as any[], overallBand: null as number | null };
+
+  const questionSectionMap = new Map<string, string | null>(
+    (test.questions ?? []).map((q: any) => [q.questionId, q.sectionId ?? null])
+  );
+  const writingBySection = new Map(writingSubmissions.map((w) => [w.sectionId, w]));
+  const speakingBySection = new Map(speakingSubmissions.filter((s) => s.sectionId).map((s) => [s.sectionId as string, s]));
+
+  const bandsForOverall: number[] = [];
+  const breakdown = sections.map((s: any) => {
+    if (s.type === "MCQ") {
+      const answersInSection = gradedAnswers.filter((a) => questionSectionMap.get(a.questionId) === s.id);
+      const correct = answersInSection.filter((a) => a.isCorrect).length;
+      return { sectionId: s.id, title: s.title, type: s.type, correct, total: answersInSection.length };
+    }
+    if (s.type === "READING" || s.type === "LISTENING") {
+      const answersInSection = gradedAnswers.filter((a) => questionSectionMap.get(a.questionId) === s.id);
+      const correct = answersInSection.filter((a) => a.isCorrect).length;
+      const total = answersInSection.length;
+      const band = total > 0 ? rawScoreToBand(s.type, correct, total) : null;
+      if (band !== null) bandsForOverall.push(band);
+      return { sectionId: s.id, title: s.title, type: s.type, correct, total, band };
+    }
+    if (s.type === "WRITING") {
+      const submission = writingBySection.get(s.id);
+      const band = submission?.score ?? null;
+      if (band !== null) bandsForOverall.push(band);
+      return {
+        sectionId: s.id,
+        title: s.title,
+        type: s.type,
+        band,
+        feedback: submission?.feedback ?? null,
+        status: !submission ? "NOT_SUBMITTED" : band !== null ? "GRADED" : "PENDING",
+      };
+    }
+    // SPEAKING
+    const speakingSubmission = speakingBySection.get(s.id);
+    const speakingBand = speakingSubmission?.overallBand ?? null;
+    if (speakingBand !== null) bandsForOverall.push(speakingBand);
+    return {
+      sectionId: s.id,
+      title: s.title,
+      type: s.type,
+      band: speakingBand,
+      feedback: speakingSubmission?.aiFeedback ?? null,
+      status: !speakingSubmission ? "NOT_SUBMITTED" : speakingSubmission.status === "GRADED" ? "GRADED" : "PENDING",
+    };
+  });
+
+  const overallBand =
+    bandsForOverall.length > 0
+      ? Math.round((bandsForOverall.reduce((sum, b) => sum + b, 0) / bandsForOverall.length) * 2) / 2
+      : null;
+
+  return { sections: breakdown, overallBand };
 }
 
 export const mockTestService = {
@@ -172,14 +244,19 @@ export const mockTestService = {
     await mockTestRepository.saveAnswers(attemptId, gradedAnswers);
     const updated = await mockTestRepository.submitAttempt(attemptId, correctCount);
 
+    const writingSubmissions = await mockTestRepository.findWritingSubmissionsByAttempt(attemptId);
+    const speakingSubmissions = await mockTestRepository.findSpeakingSubmissionsByAttempt(attemptId);
+    const { sections: sectionBreakdown, overallBand } = buildSectionBreakdown(test, gradedAnswers, writingSubmissions, speakingSubmissions);
+
     // Anti-cheating snapshots only matter for a later staff review of a
     // suspicious (flagged) attempt. For every normal attempt, delete them
     // right away (disk + DB) so they never pile up as dead weight -- they
     // did their job just by existing during the test.
     if (!(attempt as any).flagged && (attempt as any).proctoringSnapshotUrls?.length > 0) {
       for (const relativePath of (attempt as any).proctoringSnapshotUrls as string[]) {
-        const absolutePath = path.join(process.cwd(), env.storage.localUploadDir, relativePath);
-        fs.unlink(absolutePath, () => {}); // best-effort -- never block submission on cleanup
+        const cleanRel = relativePath.replace(/^\/+/, "").replace(/^uploads\/+/, "");
+        const absolutePath = path.join(process.cwd(), env.storage.localUploadDir, cleanRel);
+        fs.unlink(absolutePath, () => {});
       }
       await mockTestRepository.clearProctoringSnapshots(attemptId);
     }
@@ -192,6 +269,8 @@ export const mockTestService = {
       totalMarks,
       negativeMarkingApplied: negativeMarkingPercent > 0,
       submittedAt: updated.submittedAt,
+      sections: sectionBreakdown,
+      overallBand,
     };
   },
 
@@ -204,7 +283,18 @@ export const mockTestService = {
     if (!attempt) throw AppError.notFound("Attempt not found");
     if (attempt.studentId !== studentId) throw AppError.forbidden("This is not your attempt");
     if (!attempt.submittedAt) throw AppError.badRequest("This attempt has not been submitted yet");
-    return attempt;
+
+    const test = await this.getById((attempt as any).mockTestId);
+    const writingSubmissions = await mockTestRepository.findWritingSubmissionsByAttempt(attemptId);
+    const speakingSubmissions = await mockTestRepository.findSpeakingSubmissionsByAttempt(attemptId);
+    const gradedAnswers = ((attempt as any).answers ?? []).map((a: any) => ({
+      questionId: a.questionId,
+      selectedOption: a.selectedOption,
+      isCorrect: a.isCorrect,
+    }));
+    const { sections: sectionBreakdown, overallBand } = buildSectionBreakdown(test, gradedAnswers, writingSubmissions, speakingSubmissions);
+
+    return { ...attempt, sections: sectionBreakdown, overallBand };
   },
 
   // --- Anti-cheating (proctoring) ---
@@ -223,5 +313,38 @@ export const mockTestService = {
     if (attempt.studentId !== studentId) throw AppError.forbidden("This is not your attempt");
     if (attempt.submittedAt) throw AppError.badRequest("This attempt has already been submitted");
     return mockTestRepository.recordViolation(attemptId);
+  },
+
+  async listFlaggedAttempts(opts: { requesterLawFirmId?: string; mockTestId?: string }) {
+    return mockTestRepository.findFlaggedAttempts({
+      hostLawFirmId: opts.requesterLawFirmId,
+      mockTestId: opts.mockTestId,
+    });
+  },
+
+  async resolveFlaggedAttempt(
+    attemptId: string,
+    action: "APPROVE" | "DISQUALIFY",
+    requesterLawFirmId?: string
+  ) {
+    const attempt = await mockTestRepository.findAttemptById(attemptId);
+    if (!attempt) throw AppError.notFound("Attempt not found");
+    if (
+      requesterLawFirmId !== undefined &&
+      (attempt as any).mockTest?.hostLawFirmId !== requesterLawFirmId
+    ) {
+      throw AppError.forbidden("You can only review attempts for your own institution.");
+    }
+
+    // Delete all captured snapshots from disk immediately after admin decision
+    if ((attempt as any).proctoringSnapshotUrls?.length > 0) {
+      for (const relativePath of (attempt as any).proctoringSnapshotUrls as string[]) {
+        const cleanRel = relativePath.replace(/^\/+/, "").replace(/^uploads\/+/, "");
+        const absolutePath = path.join(process.cwd(), env.storage.localUploadDir, cleanRel);
+        fs.unlink(absolutePath, () => {});
+      }
+    }
+
+    return mockTestRepository.resolveFlaggedAttempt(attemptId, action);
   },
 };

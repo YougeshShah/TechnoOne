@@ -940,6 +940,7 @@ model TestAttempt {
 
   answers TestAnswer[]
   writingSubmissions WritingSubmission[]
+  speakingSubmissions SpeakingSubmission[]
 
   @@index([studentId])
   @@index([mockTestId])
@@ -1325,6 +1326,7 @@ model TestSection {
 
   mockTestQuestions MockTestQuestion[]
   writingSubmissions WritingSubmission[]
+  speakingSubmissions SpeakingSubmission[]
 
   @@index([mockTestId])
 }
@@ -1637,8 +1639,19 @@ model SpeakingSubmission {
   id              String   @id @default(uuid())
   student         User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId       String
-  prompt          SpeakingPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
-  promptId        String
+  prompt          SpeakingPrompt? @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  promptId        String?
+
+  // Set instead of promptId when this recording was submitted from inside
+  // a Mock Test's own SPEAKING section, which has no separate
+  // SpeakingPrompt row -- its topic text lives directly on
+  // TestSection.writingPrompt. Exactly one of promptId or
+  // (attemptId + sectionId) is set per submission, enforced in the service
+  // layer (not the DB) since Prisma can't express an XOR constraint.
+  attemptId       String?
+  attempt         TestAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  sectionId       String?
+  section         TestSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
   recordingUrl    String // path to the stored video/audio file (local disk today, swappable to cloud storage later without schema change)
   recordingType   String // "video" | "audio" -- camera+mic vs mic-only submission
@@ -1661,6 +1674,7 @@ model SpeakingSubmission {
   @@index([studentId])
   @@index([promptId])
   @@index([status])
+  @@unique([attemptId, sectionId])
 }
 // ------------------------------------------------------------
 // USAGE LIMITS — dynamic, per-course caps on Practice / Mock Test /

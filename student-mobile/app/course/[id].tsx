@@ -42,7 +42,7 @@ export default function CourseDetailScreen() {
               return;
             }
             router.push({
-              pathname: "/payment/course",
+              #,
               params: { courseId: id, amount: String(amountDueData.amountDue), courseName: course?.name ?? "" },
             });
           }}

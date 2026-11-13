@@ -8,3 +8,7 @@ export function useStudyAnalytics() {
 export function useMyTestAttempts() {
   return useQuery({ queryKey: ["my-test-attempts"], queryFn: () => progressApi.myAttempts() });
 }
+
+export function usePracticeHistory() {
+  return useQuery({ queryKey: ["practice-history"], queryFn: () => progressApi.getPracticeHistory() });
+}

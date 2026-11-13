@@ -10,6 +10,8 @@ router.use(authenticate);
 
 router.get("/", mockTestController.list);
 router.get("/my-attempts", mockTestController.myAttempts);
+router.get("/flagged-attempts", authorize("COMPANY", "LAW_FIRM_ADMIN"), mockTestController.listFlaggedAttempts);
+router.post("/attempts/:attemptId/resolve-flag", authorize("COMPANY", "LAW_FIRM_ADMIN"), mockTestController.resolveFlaggedAttempt);
 router.get("/attempts/:attemptId", mockTestController.getAttemptResult);
 router.get("/:id", mockTestController.getById);
 

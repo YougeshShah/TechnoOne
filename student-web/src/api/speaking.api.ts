@@ -13,10 +13,13 @@ export interface SpeakingPrompt {
 
 export interface SpeakingSubmission {
   id: string;
-  promptId: string;
+  promptId?: string | null;
+  attemptId?: string | null;
+  sectionId?: string | null;
   recordingType: string;
   status: "PENDING_GRADING" | "GRADED" | "GRADING_FAILED";
   overallBand: number | null;
+  aiFeedback?: string | null;
   createdAt: string;
   prompt?: { title: string; part: number; promptText: string };
 }
@@ -33,6 +36,25 @@ export const speakingApi = {
     const formData = new FormData();
     formData.append("recording", blob, recordingType === "video" ? "recording.webm" : "recording.mp3");
     formData.append("promptId", promptId);
+    formData.append("recordingType", recordingType);
+    formData.append("durationSeconds", String(durationSeconds));
+    const { data } = await apiClient.post<ApiSuccessResponse<SpeakingSubmission>>("/speaking/submissions", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data.data;
+  },
+
+  async submitMockTestRecording(
+    attemptId: string,
+    sectionId: string,
+    blob: Blob,
+    recordingType: "video" | "audio",
+    durationSeconds: number
+  ): Promise<SpeakingSubmission> {
+    const formData = new FormData();
+    formData.append("recording", blob, recordingType === "video" ? "recording.webm" : "recording.mp3");
+    formData.append("attemptId", attemptId);
+    formData.append("sectionId", sectionId);
     formData.append("recordingType", recordingType);
     formData.append("durationSeconds", String(durationSeconds));
     const { data } = await apiClient.post<ApiSuccessResponse<SpeakingSubmission>>("/speaking/submissions", formData, {
