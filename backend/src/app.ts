@@ -10,6 +10,7 @@ import apiRoutes from "./routes";
 import { errorHandler } from "./common/middleware/errorHandler";
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet());

@@ -1,3 +1,4 @@
+import { VideoPlayer } from '../../components/VideoPlayer';
 import { useParams } from "react-router-dom";
 import { Box, Chip, Paper, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";

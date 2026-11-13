@@ -24,7 +24,7 @@
   "license": "UNLICENSED",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@prisma/client": "^5.18.0",
+    "@prisma/client": "^5.22.0",
     "axios": "^1.7.7",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -65,7 +65,7 @@
     "eslint": "^8.57.0",
     "googleapis": "^174.0.1",
     "nodemon": "^3.1.4",
-    "prisma": "^5.18.0",
+    "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }

@@ -25,6 +25,7 @@ datasource db {
 // institution's admin, LAWYER/STAFF are its teachers/general staff. Do not
 // assume any of these names imply an actual law firm; check tenantType.
 enum AccountType {
+  INSTITUTION
   COMPANY // TrailBlaze Tech staff (Super Admin, Library Manager, etc.)
   LAW_FIRM_ADMIN // Owner/Admin of a tenant -- a law firm OR an education institute
   LAWYER // A tenant's teacher/senior staff (law firm: lawyer; institute: teacher)
