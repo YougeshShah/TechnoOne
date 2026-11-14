@@ -47,7 +47,7 @@ export default function CourseDetailScreen() {
             });
           }}
         >
-          <Text style={styles.bannerText}>🔓 Free demo content — tap here to subscribe for full access.</Text>
+          {/* Subscription banner removed for store compliance */}
         </TouchableOpacity>
       )}
 
