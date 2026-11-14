@@ -14,14 +14,28 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "#9CA3AF",
 };
 
+function isClassExpired(scheduledAt?: string, durationMinutes?: number): boolean {
+  if (!scheduledAt) return false;
+  const startTime = new Date(scheduledAt).getTime();
+  if (isNaN(startTime)) return false;
+  const duration = Number(durationMinutes) || 60;
+  const expiryTime = startTime + duration * 60 * 1000;
+  return Date.now() > expiryTime;
+}
+
 export default function LiveClassesScreen() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  // Scheduling is Company/institution-admin only on the backend
-  // (authorize("COMPANY", "LAW_FIRM_ADMIN") on POST /live-classes) --
-  // lawyers/staff/teachers can only view and host classes assigned to them.
-  const canManage = user?.accountType === "LAW_FIRM_ADMIN";
-  const { data: classes, isLoading } = useQuery({ queryKey: ["my-live-classes"], queryFn: () => liveClassApi.myClasses() });
+  const canManage =
+    user?.accountType === "LAW_FIRM_ADMIN" ||
+    user?.accountType === "COMPANY" ||
+    user?.accountType === "INSTITUTION_ADMIN" ||
+    user?.role === "ADMIN";
+
+  const { data: classes, isLoading } = useQuery({
+    queryKey: ["my-live-classes"],
+    queryFn: () => liveClassApi.myClasses(),
+  });
 
   const joinAsHost = useMutation({
     mutationFn: (id: string) => liveClassApi.joinAsHost(id),
@@ -67,64 +81,85 @@ export default function LiveClassesScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: spacing.md }}
         ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>No live classes scheduled.</Text> : null}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <Text style={styles.title}>{item.title}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] + "20" }]}>
-                <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>{item.status}</Text>
+        renderItem={({ item }) => {
+          const duration = item.durationMinutes ?? item.duration ?? 60;
+          const expired = isClassExpired(item.scheduledAt || item.startTime || item.date, duration);
+          const effectiveStatus =
+            (item.status === "SCHEDULED" || item.status === "LIVE") && expired
+              ? "ENDED"
+              : item.status;
+
+          return (
+            <View style={styles.card}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <Text style={styles.title}>{item.title}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: (STATUS_COLORS[effectiveStatus] || "#6B7280") + "20" }]}>
+                  <Text style={[styles.statusText, { color: STATUS_COLORS[effectiveStatus] || "#6B7280" }]}>
+                    {effectiveStatus}
+                  </Text>
+                </View>
               </View>
+              {item.course?.name && <Text style={styles.meta}>{item.course.name}</Text>}
+              <Text style={styles.meta}>
+                {new Date(item.scheduledAt).toLocaleString()} ({duration} min)
+              </Text>
+              {item.host?.fullName && <Text style={styles.meta}>Teacher: {item.host.fullName}</Text>}
+
+              {(item.status === "SCHEDULED" || item.status === "LIVE") && (
+                <TouchableOpacity
+                  style={[styles.joinButton, expired && { backgroundColor: "#9CA3AF" }]}
+                  disabled={expired || joinAsHost.isPending}
+                  onPress={() => {
+                    if (expired) {
+                      Alert.alert("Class Ended", `The ${duration}-minute duration for this class has already ended.`);
+                      return;
+                    }
+                    joinAsHost.mutate(item.id);
+                  }}
+                >
+                  <Ionicons name={expired ? "time-outline" : "videocam"} size={16} color="#fff" />
+                  <Text style={styles.joinButtonText}>
+                    {expired ? "Class Ended" : joinAsHost.isPending ? "Joining..." : "Start / Join"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {canManage && effectiveStatus === "SCHEDULED" && (
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() =>
+                    Alert.alert("Cancel class?", "Students will no longer be able to join this class.", [
+                      { text: "No", style: "cancel" },
+                      { text: "Yes, cancel", style: "destructive", onPress: () => cancelClass.mutate(item.id) },
+                    ])
+                  }
+                >
+                  <Text style={styles.cancelButtonText}>Cancel Class</Text>
+                </TouchableOpacity>
+              )}
+
+              {canManage && effectiveStatus === "ENDED" && !item.recordingUrl && (
+                <TouchableOpacity
+                  style={styles.addRecordingButton}
+                  onPress={() => {
+                    setRecordingModalId(item.id);
+                    setRecordingUrlInput("");
+                  }}
+                >
+                  <Ionicons name="link-outline" size={16} color={colors.primary} />
+                  <Text style={styles.addRecordingButtonText}>Add Recording Link</Text>
+                </TouchableOpacity>
+              )}
+
+              {effectiveStatus === "ENDED" && item.recordingUrl && (
+                <TouchableOpacity style={styles.recordingButton} onPress={() => Linking.openURL(item.recordingUrl as string)}>
+                  <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
+                  <Text style={styles.recordingButtonText}>Watch Recording</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            {item.course?.name && <Text style={styles.meta}>{item.course.name}</Text>}
-            <Text style={styles.meta}>{new Date(item.scheduledAt).toLocaleString()}</Text>
-            {item.host?.fullName && <Text style={styles.meta}>Teacher: {item.host.fullName}</Text>}
-
-            {(item.status === "SCHEDULED" || item.status === "LIVE") && (
-              <TouchableOpacity
-                style={styles.joinButton}
-                onPress={() => joinAsHost.mutate(item.id)}
-                disabled={joinAsHost.isPending}
-              >
-                <Ionicons name="videocam" size={16} color="#fff" />
-                <Text style={styles.joinButtonText}>{joinAsHost.isPending ? "Joining..." : "Start / Join"}</Text>
-              </TouchableOpacity>
-            )}
-
-            {canManage && item.status === "SCHEDULED" && (
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() =>
-                  Alert.alert("Cancel class?", "Students will no longer be able to join this class.", [
-                    { text: "No", style: "cancel" },
-                    { text: "Yes, cancel", style: "destructive", onPress: () => cancelClass.mutate(item.id) },
-                  ])
-                }
-              >
-                <Text style={styles.cancelButtonText}>Cancel Class</Text>
-              </TouchableOpacity>
-            )}
-
-            {canManage && item.status === "ENDED" && !item.recordingUrl && (
-              <TouchableOpacity
-                style={styles.addRecordingButton}
-                onPress={() => {
-                  setRecordingModalId(item.id);
-                  setRecordingUrlInput("");
-                }}
-              >
-                <Ionicons name="link-outline" size={16} color={colors.primary} />
-                <Text style={styles.addRecordingButtonText}>Add Recording Link</Text>
-              </TouchableOpacity>
-            )}
-
-            {item.status === "ENDED" && item.recordingUrl && (
-              <TouchableOpacity style={styles.recordingButton} onPress={() => Linking.openURL(item.recordingUrl as string)}>
-                <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
-                <Text style={styles.recordingButtonText}>Watch Recording</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+          );
+        }}
       />
 
       <Modal visible={!!recordingModalId} transparent animationType="slide" onRequestClose={() => setRecordingModalId(null)}>

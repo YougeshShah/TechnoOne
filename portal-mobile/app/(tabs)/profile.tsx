@@ -4,6 +4,30 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMyProfile } from "../../src/hooks/useDomainData";
 import { colors } from "../../src/theme/theme";
 
+function getDisplayRole(profile: any): string {
+  const rawRole = (profile?.role || "").toUpperCase();
+  const orgType = (profile?.organizationType || profile?.tenantType || profile?.domain || profile?.type || "").toUpperCase();
+  
+  const isInstitution = 
+    orgType.includes("INST") || 
+    orgType.includes("EDU") || 
+    orgType.includes("ACAD") || 
+    rawRole.includes("INST") || 
+    rawRole.includes("TEACHER");
+
+  if (isInstitution) {
+    if (rawRole === "LAWYER" || rawRole === "ADMIN" || rawRole === "OWNER" || !rawRole) {
+      return "Institution Admin";
+    }
+  }
+
+  if (rawRole === "LAWYER" && !orgType.includes("LAW") && !orgType.includes("LEGAL")) {
+    return "Institution Admin";
+  }
+
+  return profile?.role || "Admin";
+}
+
 export default function ProfileScreen() {
   const { data: profile } = useMyProfile();
 
@@ -14,21 +38,23 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const displayRole = getDisplayRole(profile);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
       <View style={styles.headerCard}>
         <View style={styles.avatarContainer}>
           <Text style={styles.avatarText}>{profile?.name?.[0] || "P"}</Text>
         </View>
-        <Text style={styles.name}>{profile?.name || "Prasanna Subedi"}</Text>
-        <Text style={styles.email}>{profile?.email || "prasannasubedi30@gmail.com"}</Text>
+        <Text style={styles.name}>{profile?.name || "User"}</Text>
+        <Text style={styles.email}>{profile?.email || ""}</Text>
         
         <View style={styles.badgeContainer}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>Role: {profile?.role || "Lawyer"}</Text>
+            <Text style={styles.badgeText}>Role: {displayRole}</Text>
           </View>
           <View style={[styles.badge, { backgroundColor: "#DEF7EC" }]}>
-            <Text style={[styles.badgeText, { color: "#03543F" }]}>Status: ACTIVE</Text>
+            <Text style={[styles.badgeText, { color: "#03543F" }]}>Status: {profile?.status || "ACTIVE"}</Text>
           </View>
         </View>
       </View>
@@ -47,7 +73,7 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.row} onPress={() => router.push("/settings")}>
           <View style={styles.rowLeft}>
             <Ionicons name="settings-outline" size={20} color={colors.primary} style={{ marginRight: 12 }} />
-            <Text style={styles.rowLabel}>Settings & Preferences</Text>
+            <Text style={styles.rowLabel}>Settings & Management</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
         </TouchableOpacity>

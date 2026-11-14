@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "@tanstack/react-query";
 import { authExtraApi } from "../src/api/authExtra.api";
+import { useMyProfile } from "../src/hooks/useDomainData";
 import Constants from "expo-constants";
 import { colors } from "../src/theme/theme";
 
@@ -20,7 +21,11 @@ function SettingsRow({ icon, label, onPress, right }: { icon: any; label: string
 }
 
 export default function SettingsScreen() {
+  const { data: profile } = useMyProfile();
   const [notifEnabled, setNotifEnabled] = useState(true);
+
+  const orgType = (profile?.organizationType || profile?.tenantType || profile?.domain || profile?.type || "").toUpperCase();
+  const isLawFirm = orgType.includes("LAW") || orgType.includes("LEGAL");
 
   const toggleNotif = useMutation({
     mutationFn: (enabled: boolean) => authExtraApi.toggleNotifications(enabled),
@@ -52,19 +57,27 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <SettingsRow icon="shield-checkmark-outline" label="Roles & Permissions" onPress={() => router.push("/roles")} />
         <View style={styles.divider} />
-        <SettingsRow icon="people-outline" label="Staff & Lawyers" onPress={() => router.push("/staff")} />
-        <View style={styles.divider} />
-        <SettingsRow icon="school-outline" label="Students" onPress={() => router.push("/students")} />
+        <SettingsRow icon="people-outline" label={isLawFirm ? "Staff & Lawyers" : "Staff & Teachers"} onPress={() => router.push("/staff")} />
+        {!isLawFirm && (
+          <>
+            <View style={styles.divider} />
+            <SettingsRow icon="school-outline" label="Students" onPress={() => router.push("/students")} />
+            <View style={styles.divider} />
+            <SettingsRow icon="videocam-outline" label="Live Classes" onPress={() => router.push("/live-classes")} />
+          </>
+        )}
         <View style={styles.divider} />
         <SettingsRow icon="card-outline" label="Accounting" onPress={() => router.push("/accounting")} />
         <View style={styles.divider} />
         <SettingsRow icon="ribbon-outline" label="Subscription" onPress={() => router.push("/subscription")} />
         <View style={styles.divider} />
-        <SettingsRow icon="videocam-outline" label="Live Classes" onPress={() => router.push("/live-classes")} />
-        <View style={styles.divider} />
         <SettingsRow icon="sparkles-outline" label="AI Content Generator" onPress={() => router.push("/ai-content")} />
-        <View style={styles.divider} />
-        <SettingsRow icon="book-outline" label="नजिर खोज (Precedent Search)" onPress={() => router.push("/precedents")} />
+        {isLawFirm && (
+          <>
+            <View style={styles.divider} />
+            <SettingsRow icon="book-outline" label="नजिर खोज (Precedent Search)" onPress={() => router.push("/precedents")} />
+          </>
+        )}
       </View>
 
       <Text style={styles.sectionHeader}>Preferences & Usage</Text>
