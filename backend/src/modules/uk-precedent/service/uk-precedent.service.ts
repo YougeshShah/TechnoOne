@@ -1,31 +1,52 @@
 import { AppError } from "../../../common/errors/AppError";
 
-// Live search against UK National Archives' Find Case Law API -- results
-// are returned directly to the user, never stored in our own database.
-// Storing/bulk-extracting these records requires a separate "computational
-// analysis" permission from the National Archives that we do not have yet;
-// live pass-through search does not require that permission.
+function stripXmlTags(str: string): string {
+  return str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export const ukPrecedentService = {
-  async search(query: string, page: number = 1) {
-    const url = `https://caselaw.nationalarchives.gov.uk/atom.xml?query=${encodeURIComponent(query)}&page=${page}&per_page=20`;
+  async search(query: string, page: number = 1, perPage: number = 20) {
+    const url = `https://caselaw.nationalarchives.gov.uk/atom.xml?query=${encodeURIComponent(query)}&page=${page}&per_page=${perPage}`;
     const response = await fetch(url);
     if (!response.ok) {
       throw AppError.badRequest(`UK case law search failed: ${response.status}`);
     }
     const xml = await response.text();
 
-    // Minimal XML parsing -- extract just the fields we need from each
-    // <entry> without pulling in a full XML parser dependency.
     const entries: any[] = [];
     const entryMatches = xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g);
     for (const match of entryMatches) {
       const entry = match[1];
-      const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? "";
-      const published = entry.match(/<published>([\s\S]*?)<\/published>/)?.[1] ?? "";
-      const author = entry.match(/<author>\s*<name>([\s\S]*?)<\/name>/)?.[1] ?? "";
-      const link = entry.match(/<link href="([^"]*)" rel="alternate"\/>/)?.[1] ?? "";
-      const ncn = entry.match(/type="ukncn">([\s\S]*?)<\/tna:identifier>/)?.[1] ?? "";
-      entries.push({ title, publishedDate: published, court: author, url: link, citation: ncn });
+      const title = stripXmlTags(entry.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] ?? "");
+      const published = (entry.match(/<published>([\s\S]*?)<\/published>/)?.[1] ?? "").trim();
+      const author = stripXmlTags(entry.match(/<author>\s*<name>([\s\S]*?)<\/name>/)?.[1] ?? "");
+      const link = entry.match(/<link[^>]*href="([^"]*)"[^>]*rel="alternate"[^>]*\/>/)?.[1]
+        ?? entry.match(/<link[^>]*href="([^"]*)"/)?.[1]
+        ?? "";
+      const ncn = stripXmlTags(entry.match(/type="ukncn">([\s\S]*?)<\/tna:identifier>/)?.[1] ?? "");
+      const rawSummary =
+        entry.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] ??
+        entry.match(/<content[^>]*>([\s\S]*?)<\/content>/)?.[1] ??
+        "";
+      const summary = stripXmlTags(rawSummary).slice(0, 2000);
+
+      entries.push({
+        title,
+        publishedDate: published ? published.split("T")[0] : "",
+        court: author,
+        url: link,
+        citation: ncn,
+        summary,
+      });
     }
 
     return { items: entries, page, source: "UK National Archives - Find Case Law" };
