@@ -5,7 +5,9 @@ import SmartToyIcon from "@mui/icons-material/SmartToyOutlined";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import TipsAndUpdatesIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
+import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { aiAssistantApi, AiAssistantSource, AiHistoryMessage } from "../../api/aiAssistant.api";
 
@@ -14,6 +16,7 @@ interface Message {
   text: string;
   sources?: AiAssistantSource[];
   isError?: boolean;
+  isLimitError?: boolean;
 }
 
 const SAMPLE_PROMPTS = [
@@ -24,8 +27,10 @@ const SAMPLE_PROMPTS = [
 ];
 
 export function AiAssistantPage() {
+  const navigate = useNavigate();
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isLimitReached, setIsLimitReached] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const ask = useMutation({
@@ -35,8 +40,21 @@ export function AiAssistantPage() {
       setMessages((prev) => [...prev, { role: "assistant", text: data.answer, sources: data.sources }]);
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || "Something went wrong. Please try again.";
-      setMessages((prev) => [...prev, { role: "assistant", text: msg, isError: true }]);
+      const errMsg = err?.response?.data?.message || err?.message || "Something went wrong.";
+      const isLimit = errMsg.toLowerCase().includes("limit") || errMsg.toLowerCase().includes("quota") || errMsg.toLowerCase().includes("exceeded") || err?.response?.status === 403;
+      if (isLimit) {
+        setIsLimitReached(true);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: "Limit reached · Resets soon. Your organization has exhausted its AI query token allowance for this billing cycle.",
+            isLimitError: true,
+          },
+        ]);
+      } else {
+        setMessages((prev) => [...prev, { role: "assistant", text: errMsg, isError: true }]);
+      }
     },
   });
 
@@ -46,9 +64,9 @@ export function AiAssistantPage() {
 
   const sendQuery = (qText: string) => {
     const trimmed = qText.trim();
-    if (!trimmed || ask.isPending) return;
+    if (!trimmed || ask.isPending || isLimitReached) return;
     const history: AiHistoryMessage[] = messages
-      .filter((m) => !m.isError)
+      .filter((m) => !m.isError && !m.isLimitError)
       .map((m) => ({ role: m.role, text: m.text }));
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     ask.mutate({ q: trimmed, history });
@@ -62,11 +80,27 @@ export function AiAssistantPage() {
           AI Legal Research Agent (Nepal 🇳🇵 & UK 🇬🇧)
         </Typography>
         {messages.length > 0 && (
-          <Button size="small" color="inherit" startIcon={<DeleteSweepIcon />} onClick={() => setMessages([])}>
+          <Button size="small" color="inherit" startIcon={<DeleteSweepIcon />} onClick={() => { setMessages([]); setIsLimitReached(false); }}>
             Clear Chat
           </Button>
         )}
       </Box>
+
+      {isLimitReached && (
+        <Alert
+          severity="warning"
+          icon={<WorkspacePremiumIcon />}
+          action={
+            <Button color="inherit" size="small" variant="outlined" onClick={() => navigate("/subscription")}>
+              Upgrade Plan
+            </Button>
+          }
+          sx={{ mb: 2, alignItems: "center", bgcolor: "#FEF3C7", color: "#92400E", border: "1px solid #F59E0B" }}
+        >
+          <strong>Limit reached · AI Token Allowance Exhausted.</strong> Please upgrade your subscription plan to continue research.
+        </Alert>
+      )}
+
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
         Analyzes both Supreme Court of Nepal नजिर and UK Case Law with comparative citations & cross-question memory.
       </Typography>
@@ -103,7 +137,11 @@ export function AiAssistantPage() {
           <Box key={i} sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
             {m.role === "assistant" ? <SmartToyIcon color="primary" sx={{ mt: 0.5 }} /> : <PersonIcon sx={{ mt: 0.5 }} />}
             <Box sx={{ flex: 1 }}>
-              {m.isError ? (
+              {m.isLimitError ? (
+                <Alert severity="warning" action={<Button size="small" onClick={() => navigate("/subscription")}>Upgrade</Button>} sx={{ mb: 1 }}>
+                  {m.text}
+                </Alert>
+              ) : m.isError ? (
                 <Alert severity="error" sx={{ mb: 1 }}>
                   {m.text}
                 </Alert>
@@ -153,13 +191,13 @@ export function AiAssistantPage() {
         <TextField
           fullWidth
           size="small"
-          placeholder="Enter legal keywords or ask a follow-up cross-question..."
+          placeholder={isLimitReached ? "AI token limit reached. Please upgrade plan." : "Enter legal keywords or ask a follow-up cross-question..."}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendQuery(question)}
-          disabled={ask.isPending}
+          disabled={ask.isPending || isLimitReached}
         />
-        <Button variant="contained" endIcon={<SendIcon />} onClick={() => sendQuery(question)} disabled={!question.trim() || ask.isPending}>
+        <Button variant="contained" endIcon={<SendIcon />} onClick={() => sendQuery(question)} disabled={!question.trim() || ask.isPending || isLimitReached}>
           Ask
         </Button>
       </Box>
