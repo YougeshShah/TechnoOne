@@ -12,7 +12,15 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "#9CA3AF",
 };
 
-export default function LiveClassesScreen() {
+
+// Helper to check if live class has expired (e.g. 60 mins duration)
+function isClassExpired(dateString: string, durationMinutes: number = 60): boolean {
+  if (!dateString) return false;
+  const startTime = new Date(dateString).getTime();
+  const expiryTime = startTime + durationMinutes * 60 * 1000;
+  return Date.now() > expiryTime;
+}
+\nexport default function LiveClassesScreen() {
   const router = useRouter();
   const { data: subscriptions, isLoading: loadingSubs } = useMySubscriptions();
   const activeCourseIds = (subscriptions ?? [])
@@ -71,7 +79,20 @@ export default function LiveClassesScreen() {
             <Text style={styles.meta}>{new Date(item.scheduledAt).toLocaleString()}</Text>
             {item.host?.fullName && <Text style={styles.meta}>Teacher: {item.host.fullName}</Text>}
             {(item.status === "SCHEDULED" || item.status === "LIVE") && (
-              <TouchableOpacity style={styles.joinButton} onPress={() => join.mutate(item.id)} disabled={join.isPending}>
+              {(() => {
+  const expired = isClassExpired(item.date || item.startTime);
+  return (
+    <TouchableOpacity 
+      style={[styles.joinButton, expired && { backgroundColor: "#9CA3AF" }]} 
+      disabled={expired}
+      onPress={() => {
+        if (expired) {
+          Alert.alert("Class Ended", "The 60-minute duration for this live class has passed.");
+          return;
+        }
+        // existing join action
+      }}
+    > onPress={() => join.mutate(item.id)} disabled={join.isPending}>
                 <Ionicons name="videocam" size={16} color="#fff" />
                 <Text style={styles.joinButtonText}>{join.isPending ? "Joining..." : "Join Class"}</Text>
               </TouchableOpacity>
