@@ -14,10 +14,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 
 // Helper to check if live class has expired (e.g. 60 mins duration)
-function isClassExpired(dateString: string, durationMinutes: number = 60): boolean {
+function isClassExpired(dateString: string, durationMinutes?: number): boolean {
   if (!dateString) return false;
+  const duration = durationMinutes || 60;
   const startTime = new Date(dateString).getTime();
-  const expiryTime = startTime + durationMinutes * 60 * 1000;
+  const expiryTime = startTime + duration * 60 * 1000;
   return Date.now() > expiryTime;
 }
 \nexport default function LiveClassesScreen() {
@@ -80,7 +81,7 @@ function isClassExpired(dateString: string, durationMinutes: number = 60): boole
             {item.host?.fullName && <Text style={styles.meta}>Teacher: {item.host.fullName}</Text>}
             {(item.status === "SCHEDULED" || item.status === "LIVE") && (
               {(() => {
-  const expired = isClassExpired(item.date || item.startTime);
+  const expired = isClassExpired(item.date || item.startTime, item.duration || item.durationMinutes);
   return (
     <TouchableOpacity 
       style={[styles.joinButton, expired && { backgroundColor: "#9CA3AF" }]} 
