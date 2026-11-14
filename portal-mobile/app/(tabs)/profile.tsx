@@ -1,353 +1,81 @@
-import { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useAuthStore } from "../../src/store/authStore";
-import { useLogout } from "../../src/hooks/useAuth";
-import { useChangePassword } from "../../src/hooks/useDomainData";
-import { Card } from "../../src/components/Card";
-import { colors, spacing, radius } from "../../src/theme/theme";
-import { registerForPushNotifications, sendTestPush } from "../../src/utils/pushNotifications";
-import { useTranslation } from "../../src/i18n/LanguageContext";
+import { useMyProfile } from "../../src/hooks/useDomainData";
+import { colors } from "../../src/theme/theme";
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const user = useAuthStore((s) => s.user);
-  const logout = useLogout();
-  const changePassword = useChangePassword();
-  const { t, language, setLanguage } = useTranslation();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [sendingTest, setSendingTest] = useState(false);
+  const { data: profile } = useMyProfile();
 
-  const handleTestPush = async () => {
-    setSendingTest(true);
-    try {
-      const token = await registerForPushNotifications();
-      if (!token) {
-        Alert.alert("Not available", "Push notifications require a physical device with notifications enabled.");
-        return;
-      }
-      await sendTestPush(token);
-      Alert.alert("Sent", "Test notification sent — it should arrive within a few seconds.");
-    } catch {
-      Alert.alert("Error", "Could not send test notification.");
-    } finally {
-      setSendingTest(false);
-    }
-  };
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const resetForm = () => {
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-  };
-
-  const submitChangePassword = () => {
-    if (newPassword.length < 8) {
-      Alert.alert("Too short", "New password must be at least 8 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      Alert.alert("Mismatch", "New password and confirmation do not match.");
-      return;
-    }
-    changePassword.mutate(
-      { currentPassword, newPassword },
-      {
-        onSuccess: () => {
-          Alert.alert("Success", "Password changed successfully.");
-          resetForm();
-          setModalOpen(false);
-        },
-        onError: (err: any) => {
-          Alert.alert("Error", err?.response?.data?.message || "Could not change password.");
-        },
-      }
-    );
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Logout", style: "destructive", onPress: () => router.replace("/(auth)/login") }
+    ]);
   };
 
   return (
-    <>
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={styles.avatarWrap}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.fullName?.charAt(0) ?? "U"}</Text>
-          </View>
-          <Text style={styles.name}>{user?.fullName}</Text>
-          <Text style={styles.email}>{user?.email}</Text>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
+      <View style={styles.headerCard}>
+        <View style={styles.avatarContainer}>
+          <Text style={styles.avatarText}>{profile?.name?.[0] || "P"}</Text>
         </View>
-        <Card style={{ marginBottom: spacing.md }}>
-          <InfoRow label={t("role")} value="Lawyer" />
-          <InfoRow label={t("accountStatus")} value={user?.lawFirmStatus || "—"} />
-        </Card>
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/edit-profile")}>
-          <Ionicons name="person-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Edit Profile</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        {user?.accountType === "LAW_FIRM_ADMIN" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/staff")}>
-            <Ionicons name="people-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Staff & Lawyers</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.accountType === "LAW_FIRM_ADMIN" && user?.tenantType === "EDUCATION" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/students")}>
-            <Ionicons name="school-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Students</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.accountType === "LAW_FIRM_ADMIN" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/reports")}>
-            <Ionicons name="bar-chart-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Reports</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.accountType === "LAW_FIRM_ADMIN" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/roles")}>
-            <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Roles & Permissions</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.accountType === "LAW_FIRM_ADMIN" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/accounting")}>
-            <Ionicons name="cash-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Accounting</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.accountType === "LAW_FIRM_ADMIN" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/tickets")}>
-            <Ionicons name="help-buoy-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Support Tickets</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.accountType === "LAW_FIRM_ADMIN" && user?.tenantType === "EDUCATION" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/usage-limits")}>
-            <Ionicons name="speedometer-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Usage Limits</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/precedents")}>
-          <Ionicons name="library-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>नजिर खोज (Precedent Search)</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        {user?.tenantType === "LAW_FIRM" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/uk-precedents")}>
-            <Ionicons name="globe-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>UK Case Law</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {user?.tenantType === "LAW_FIRM" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/drafting")}>
-            <Ionicons name="create-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Drafting Panel</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/subscription")}>
-          <Ionicons name="card-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Subscription</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/messages")}>
-          <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Messages</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        {user?.tenantType === "LAW_FIRM" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/ai-assistant")}>
-            <Ionicons name="sparkles-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>AI Legal Assistant</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/ai-content")}>
-          <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>AI Content Generator</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        {user?.tenantType === "EDUCATION" && (
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/live-classes")}>
-            <Ionicons name="videocam-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Live Classes</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.actionButton} onPress={() => setLanguage(language === "en" ? "ne" : "en")}>
-          <Ionicons name="language-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>{t("language")}</Text>
-          <Text style={styles.langValue}>{language === "en" ? "English" : "नेपाली"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => setModalOpen(true)}>
-          <Ionicons name="lock-closed-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>{t("changePassword")}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        {__DEV__ && (
-          <TouchableOpacity style={styles.actionButton} onPress={handleTestPush} disabled={sendingTest}>
-            <Ionicons name="notifications-outline" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>{sendingTest ? "Sending..." : t("sendTestNotification")}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/settings")}>
-          <Ionicons name="settings-outline" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Settings</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <Ionicons name="log-out-outline" size={20} color="#fff" />
-          <Text style={styles.logoutText}>{t("logout")}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-      <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Change Password</Text>
-            <Text style={styles.modalLabel}>Current Password</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={styles.passwordInput}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                secureTextEntry={!showCurrent}
-                placeholder="••••••••"
-                placeholderTextColor="#9CA3AF"
-              />
-              <TouchableOpacity onPress={() => setShowCurrent((v) => !v)} style={styles.eyeButton}>
-                <Ionicons name={showCurrent ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalLabel}>New Password</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={styles.passwordInput}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry={!showNew}
-                placeholder="Minimum 8 characters"
-                placeholderTextColor="#9CA3AF"
-              />
-              <TouchableOpacity onPress={() => setShowNew((v) => !v)} style={styles.eyeButton}>
-                <Ionicons name={showNew ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalLabel}>Confirm New Password</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={styles.passwordInput}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showConfirm}
-                placeholder="Re-enter new password"
-                placeholderTextColor="#9CA3AF"
-              />
-              <TouchableOpacity onPress={() => setShowConfirm((v) => !v)} style={styles.eyeButton}>
-                <Ionicons name={showConfirm ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.saveButton} onPress={submitChangePassword} disabled={changePassword.isPending}>
-              <Text style={styles.saveButtonText}>{changePassword.isPending ? "Saving..." : "Save Password"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => {
-                resetForm();
-                setModalOpen(false);
-              }}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+        <Text style={styles.name}>{profile?.name || "Prasanna Subedi"}</Text>
+        <Text style={styles.email}>{profile?.email || "prasannasubedi30@gmail.com"}</Text>
+        
+        <View style={styles.badgeContainer}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Role: {profile?.role || "Lawyer"}</Text>
+          </View>
+          <View style={[styles.badge, { backgroundColor: "#DEF7EC" }]}>
+            <Text style={[styles.badgeText, { color: "#03543F" }]}>Status: ACTIVE</Text>
           </View>
         </View>
-      </Modal>
-    </>
-  );
-}
+      </View>
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.row} onPress={() => router.push("/edit-profile")}>
+          <View style={styles.rowLeft}>
+            <Ionicons name="person-outline" size={20} color={colors.primary} style={{ marginRight: 12 }} />
+            <Text style={styles.rowLabel}>Edit Profile</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+
+        <TouchableOpacity style={styles.row} onPress={() => router.push("/settings")}>
+          <View style={styles.rowLeft}>
+            <Ionicons name="settings-outline" size={20} color={colors.primary} style={{ marginRight: 12 }} />
+            <Text style={styles.rowLabel}>Settings & Preferences</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <Ionicons name="log-out-outline" size={20} color="#DC2626" style={{ marginRight: 8 }} />
+        <Text style={styles.logoutText}>Logout</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.md },
-  avatarWrap: { alignItems: "center", marginVertical: spacing.lg },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.sm,
-  },
-  avatarText: { color: "#fff", fontSize: 28, fontWeight: "800" },
-  name: { fontSize: 18, fontWeight: "700", color: colors.textPrimary },
-  email: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
-  infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing.sm },
-  infoLabel: { fontSize: 13, color: colors.textSecondary },
-  infoValue: { fontSize: 13, color: colors.textPrimary, fontWeight: "600" },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  actionButtonText: { flex: 1, fontSize: 14, fontWeight: "600", color: colors.textPrimary },
-  langValue: { fontSize: 13, color: colors.textSecondary, fontWeight: "600" },
-  logoutButton: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.error,
-    borderRadius: 10,
-    paddingVertical: 14,
-    gap: spacing.sm,
-  },
-  logoutText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg },
-  modalTitle: { fontSize: 17, fontWeight: "800", color: colors.textPrimary, marginBottom: spacing.sm },
-  modalLabel: { fontSize: 13, fontWeight: "600", color: colors.textSecondary, marginTop: spacing.sm, marginBottom: 6 },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-    fontSize: 14,
-  },
-  passwordRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
-  passwordInput: { flex: 1, padding: spacing.sm, fontSize: 14 },
-  eyeButton: { paddingHorizontal: 10, paddingVertical: 10 },
-  saveButton: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14, alignItems: "center", marginTop: spacing.lg },
-  saveButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  cancelButton: { alignItems: "center", paddingVertical: 12 },
-  cancelButtonText: { color: colors.textSecondary, fontWeight: "600" },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  headerCard: { backgroundColor: "#fff", borderRadius: 12, padding: 24, alignItems: "center", marginBottom: 16, borderWidth: 1, borderColor: "#E5E7EB" },
+  avatarContainer: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center", marginBottom: 12 },
+  avatarText: { fontSize: 28, fontWeight: "bold", color: "#fff" },
+  name: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 },
+  email: { fontSize: 14, color: "#6B7280", marginBottom: 12 },
+  badgeContainer: { flexDirection: "row", gap: 8 },
+  badge: { backgroundColor: "#F3F4F6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  badgeText: { fontSize: 12, fontWeight: "600", color: "#374151" },
+  card: { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden", marginBottom: 20 },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14, paddingHorizontal: 16 },
+  rowLeft: { flexDirection: "row", alignItems: "center" },
+  rowLabel: { fontSize: 15, color: "#111827", fontWeight: "500" },
+  divider: { height: 1, backgroundColor: "#F3F4F6", marginLeft: 48 },
+  logoutButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", backgroundColor: "#FEE2E2", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FCA5A5" },
+  logoutText: { color: "#DC2626", fontSize: 16, fontWeight: "600" }
 });
