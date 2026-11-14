@@ -1,107 +1,117 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from "react-native";
-import { router } from "expo-router";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useMyProfile } from "../../src/hooks/useDomainData";
-import { colors } from "../../src/theme/theme";
+import { useRouter } from "expo-router";
+import { useAuthStore } from "../../src/store/authStore";
+import { useLogout } from "../../src/hooks/useAuth";
+import { Card } from "../../src/components/Card";
+import { colors, spacing } from "../../src/theme/theme";
+import { useTranslation } from "../../src/i18n/LanguageContext";
 
-function getDisplayRole(profile: any): string {
-  const rawRole = (profile?.role || "").toUpperCase();
-  const orgType = (profile?.organizationType || profile?.tenantType || profile?.domain || profile?.type || "").toUpperCase();
-  
-  const isInstitution = 
-    orgType.includes("INST") || 
-    orgType.includes("EDU") || 
-    orgType.includes("ACAD") || 
-    rawRole.includes("INST") || 
-    rawRole.includes("TEACHER");
-
-  if (isInstitution) {
-    if (rawRole === "LAWYER" || rawRole === "ADMIN" || rawRole === "OWNER" || !rawRole) {
-      return "Institution Admin";
-    }
+function getRoleLabel(accountType?: string, tenantType?: string | null): string {
+  const isEducation = tenantType === "EDUCATION";
+  if (isEducation) {
+    if (accountType === "LAW_FIRM_ADMIN" || accountType === "COMPANY") return "Institution Admin";
+    if (accountType === "LAWYER") return "Teacher";
+    if (accountType === "STAFF") return "Staff";
+    return "Institution";
   }
-
-  if (rawRole === "LAWYER" && !orgType.includes("LAW") && !orgType.includes("LEGAL")) {
-    return "Institution Admin";
-  }
-
-  return profile?.role || "Admin";
+  if (accountType === "LAW_FIRM_ADMIN") return "Law Firm Admin";
+  if (accountType === "COMPANY") return "Admin";
+  if (accountType === "STAFF") return "Staff";
+  return "Lawyer";
 }
 
 export default function ProfileScreen() {
-  const { data: profile } = useMyProfile();
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const logout = useLogout();
+  const { t } = useTranslation();
 
-  const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Logout", style: "destructive", onPress: () => router.replace("/(auth)/login") }
-    ]);
-  };
-
-  const displayRole = getDisplayRole(profile);
+  const roleLabel = getRoleLabel(user?.accountType, user?.tenantType);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
-      <View style={styles.headerCard}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>{profile?.name?.[0] || "P"}</Text>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <View style={styles.avatarWrap}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{user?.fullName?.charAt(0) ?? "U"}</Text>
         </View>
-        <Text style={styles.name}>{profile?.name || "User"}</Text>
-        <Text style={styles.email}>{profile?.email || ""}</Text>
-        
-        <View style={styles.badgeContainer}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Role: {displayRole}</Text>
-          </View>
-          <View style={[styles.badge, { backgroundColor: "#DEF7EC" }]}>
-            <Text style={[styles.badgeText, { color: "#03543F" }]}>Status: {profile?.status || "ACTIVE"}</Text>
-          </View>
-        </View>
+        <Text style={styles.name}>{user?.fullName}</Text>
+        <Text style={styles.email}>{user?.email}</Text>
       </View>
 
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.row} onPress={() => router.push("/edit-profile")}>
-          <View style={styles.rowLeft}>
-            <Ionicons name="person-outline" size={20} color={colors.primary} style={{ marginRight: 12 }} />
-            <Text style={styles.rowLabel}>Edit Profile</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-        </TouchableOpacity>
+      <Card style={{ marginBottom: spacing.md }}>
+        <InfoRow label={t("role")} value={roleLabel} />
+        <InfoRow label={t("accountStatus")} value={user?.lawFirmStatus || "ACTIVE"} />
+      </Card>
 
-        <View style={styles.divider} />
+      <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/edit-profile")}>
+        <Ionicons name="person-outline" size={20} color={colors.primary} />
+        <Text style={styles.actionButtonText}>Edit Profile</Text>
+        <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+      </TouchableOpacity>
 
-        <TouchableOpacity style={styles.row} onPress={() => router.push("/settings")}>
-          <View style={styles.rowLeft}>
-            <Ionicons name="settings-outline" size={20} color={colors.primary} style={{ marginRight: 12 }} />
-            <Text style={styles.rowLabel}>Settings & Management</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/settings")}>
+        <Ionicons name="settings-outline" size={20} color={colors.primary} />
+        <Text style={styles.actionButtonText}>Settings & Management</Text>
+        <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+      </TouchableOpacity>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Ionicons name="log-out-outline" size={20} color="#DC2626" style={{ marginRight: 8 }} />
-        <Text style={styles.logoutText}>Logout</Text>
+      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+        <Ionicons name="log-out-outline" size={20} color="#fff" />
+        <Text style={styles.logoutText}>{t("logout")}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
-  headerCard: { backgroundColor: "#fff", borderRadius: 12, padding: 24, alignItems: "center", marginBottom: 16, borderWidth: 1, borderColor: "#E5E7EB" },
-  avatarContainer: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center", marginBottom: 12 },
-  avatarText: { fontSize: 28, fontWeight: "bold", color: "#fff" },
-  name: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 },
-  email: { fontSize: 14, color: "#6B7280", marginBottom: 12 },
-  badgeContainer: { flexDirection: "row", gap: 8 },
-  badge: { backgroundColor: "#F3F4F6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  badgeText: { fontSize: 12, fontWeight: "600", color: "#374151" },
-  card: { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden", marginBottom: 20 },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14, paddingHorizontal: 16 },
-  rowLeft: { flexDirection: "row", alignItems: "center" },
-  rowLabel: { fontSize: 15, color: "#111827", fontWeight: "500" },
-  divider: { height: 1, backgroundColor: "#F3F4F6", marginLeft: 48 },
-  logoutButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", backgroundColor: "#FEE2E2", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FCA5A5" },
-  logoutText: { color: "#DC2626", fontSize: 16, fontWeight: "600" }
+  container: { flex: 1, backgroundColor: colors.background, padding: spacing.md },
+  avatarWrap: { alignItems: "center", marginVertical: spacing.lg },
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
+  avatarText: { color: "#fff", fontSize: 28, fontWeight: "800" },
+  name: { fontSize: 18, fontWeight: "700", color: colors.textPrimary },
+  email: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing.sm },
+  infoLabel: { fontSize: 13, color: colors.textSecondary },
+  infoValue: { fontSize: 13, color: colors.textPrimary, fontWeight: "600" },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  actionButtonText: { flex: 1, fontSize: 14, fontWeight: "600", color: colors.textPrimary },
+  logoutButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.error,
+    borderRadius: 10,
+    paddingVertical: 14,
+    gap: spacing.sm,
+  },
+  logoutText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });
